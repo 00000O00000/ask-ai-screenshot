@@ -1,0 +1,8 @@
+PyQt6==6.6.1
+PyQt6-Qt6==6.6.1
+PyQt6-sip==13.6.0
+requests==2.31.0
+pynput==1.7.6
+Pillow==10.1.0
+markdown==3.5.1
+psutil==5.9.6
