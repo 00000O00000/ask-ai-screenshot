@@ -261,6 +261,8 @@ class OCRManager(QObject):
                 return self._tencent_ocr(image)
             elif engine == "xinyew":
                 return self._xinyew_ocr(image)
+            elif engine == "vision_model":
+                return self._vision_model_ocr(image)
             else:
                 # 默认使用新野OCR
                 return self._xinyew_ocr(image)
@@ -403,30 +405,110 @@ class OCRManager(QObject):
             
         except Exception as e:
             raise Exception(f"新野OCR识别失败: {e}")
+    
+    def _vision_model_ocr(self, image: Image.Image) -> str:
+        """视觉模型OCR"""
+        try:
+            # 获取视觉模型配置
+            vision_config = self.config_manager.get_config("ocr.vision_model")
+            if not vision_config:
+                raise Exception("视觉模型配置不存在")
+            
+            api_key = vision_config.get("api_key", "")
+            if not api_key:
+                raise Exception("视觉模型API密钥未配置")
+            
+            # 将图片转换为base64
+            import io
+            import base64
+            
+            buffer = io.BytesIO()
+            image.save(buffer, format='PNG')
+            image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            # 构建请求数据
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            }
+            
+            prompt = vision_config.get("prompt", "请识别图片中的文字内容，并格式化后给我。只返回识别到的文字，不要添加任何解释或说明。")
+            data = {
+                "model": vision_config.get("model_id", ""),
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": prompt
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{image_base64}"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "temperature": vision_config.get("temperature", 0.3)
+            }
+            
+            # 只有当max_tokens大于0时才添加此参数
+            max_tokens = vision_config.get("max_tokens", 1000)
+            if max_tokens > 0:
+                data["max_tokens"] = max_tokens
+            
+            # 发送请求
+            import requests
+            response = requests.post(
+                vision_config.get("api_endpoint", "") + "/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"API请求失败: {response.status_code} - {response.text}")
+            
+            result = response.json()
+            
+            if "choices" not in result or not result["choices"]:
+                raise Exception("API响应格式错误")
+            
+            ocr_text = result["choices"][0]["message"]["content"].strip()
+            
+            if not ocr_text:
+                ocr_text = "未识别到文字内容"
+            
+            self.ocr_completed.emit(ocr_text)
+            return ocr_text
+            
+        except Exception as e:
+            raise Exception(f"视觉模型OCR识别失败: {e}")
 
 
 class AIRequestThread(QThread):
     """AI请求工作线程"""
     
-    response_chunk = pyqtSignal(str)  # 流式响应块信号
     response_completed = pyqtSignal(str)  # 响应完成信号
-    thinking_started = pyqtSignal()  # 开始思考信号
-    thinking_finished = pyqtSignal()  # 思考完成信号
     request_failed = pyqtSignal(str)  # 请求失败信号
+    streaming_response = pyqtSignal(str, str)  # 流式响应信号 (content_type, content)
+    reasoning_content = pyqtSignal(str)  # 推理内容信号
     
     def __init__(self, model_config, request_data):
         super().__init__()
         self.model_config = model_config
         self.request_data = request_data
         self.should_stop = False
+        self.accumulated_content = ""
+        self.accumulated_reasoning = ""
     
     def run(self):
         """执行AI请求"""
         try:
-            if self.model_config.get("stream", True):
-                self._send_stream_request()
-            else:
-                self._send_normal_request()
+            self._send_streaming_request()
         except Exception as e:
             if not self.should_stop:
                 error_msg = f"AI请求失败: {e}"
@@ -439,67 +521,118 @@ class AIRequestThread(QThread):
         self.quit()
         self.wait()
     
-    def _send_stream_request(self):
+
+    
+    def _send_streaming_request(self):
         """发送流式请求"""
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.model_config['api_key']}"
         }
         
-        response = requests.post(
-            self.model_config["api_endpoint"],
-            headers=headers,
-            json=self.request_data,
-            stream=True,
-            timeout=60
-        )
+        # 添加流式请求参数
+        stream_request_data = self.request_data.copy()
+        stream_request_data["stream"] = True
         
-        if response.status_code != 200:
-            error_detail = f"HTTP {response.status_code}: {response.text}"
-            logging.error(f"API请求失败 - {error_detail}")
-            raise Exception(f"API请求失败: {error_detail}")
-        
-        response.raise_for_status()
-        
-        full_response = ""
-        is_thinking = False
-        
-        for line in response.iter_lines():
-            if self.should_stop:
-                break
-                
-            if line:
-                line_text = line.decode('utf-8')
-                if line_text.startswith('data: '):
-                    data_text = line_text[6:]
-                    if data_text.strip() == '[DONE]':
-                        break
+        try:
+            response = requests.post(
+                self.model_config["api_endpoint"],
+                headers=headers,
+                json=stream_request_data,
+                timeout=200,
+                stream=True
+            )
+            
+            if response.status_code != 200:
+                error_detail = f"HTTP {response.status_code}: {response.text}"
+                logging.error(f"API请求失败 - {error_detail}")
+                raise Exception(f"API请求失败: {error_detail}")
+            
+            response.raise_for_status()
+            
+            # 处理流式响应
+            for line in response.iter_lines():
+                if self.should_stop:
+                    break
                     
-                    try:
-                        data = json.loads(data_text)
-                        if 'choices' in data and len(data['choices']) > 0:
-                            delta = data['choices'][0].get('delta', {})
-                            content = delta.get('content', '')
+                if line:
+                    line_text = line.decode('utf-8')
+                    if line_text.startswith('data: '):
+                        data_text = line_text[6:]  # 移除 'data: ' 前缀
+                        
+                        if data_text.strip() == '[DONE]':
+                            break
                             
-                            if content:
-                                # 检查是否是思考内容
-                                if '<thinking>' in content and not is_thinking:
-                                    is_thinking = True
-                                    self.thinking_started.emit()
-                                elif '</thinking>' in content and is_thinking:
-                                    is_thinking = False
-                                    self.thinking_finished.emit()
-                                elif not is_thinking:
-                                    full_response += content
-                                    self.response_chunk.emit(content)
-                    except json.JSONDecodeError:
-                        continue
-        
-        if not self.should_stop:
-            self.response_completed.emit(full_response)
+                        try:
+                            data = json.loads(data_text)
+                            if 'choices' in data and len(data['choices']) > 0:
+                                choice = data['choices'][0]
+                                if 'delta' in choice:
+                                    delta = choice['delta']
+                                    
+                                    # 处理推理内容（推理模型特有）
+                                    if 'reasoning_content' in delta and delta['reasoning_content']:
+                                        reasoning_content = delta['reasoning_content']
+                                        self.accumulated_reasoning += reasoning_content
+                                        self.reasoning_content.emit(reasoning_content)
+                                    
+                                    # 处理普通内容
+                                    if 'content' in delta and delta['content']:
+                                        content = delta['content']
+                                        self._process_streaming_content(content)
+                        except json.JSONDecodeError:
+                            continue
+            
+            # 发送完成信号
+            if not self.should_stop:
+                final_content = self.accumulated_content
+                if self.accumulated_reasoning:
+                    final_content = f"**思考内容：**\n{self.accumulated_reasoning}\n\n**回复内容：**\n{self.accumulated_content}"
+                self.response_completed.emit(final_content)
+                
+        except Exception as e:
+            # 如果流式请求失败，尝试普通请求
+            logging.warning(f"流式请求失败，尝试普通请求: {e}")
+            self._send_normal_request_fallback()
     
-    def _send_normal_request(self):
-        """发送普通请求"""
+    def _process_streaming_content(self, content):
+        """处理流式内容"""
+        # 检测是否是推理内容（支持多种格式）
+        is_reasoning = False
+        
+        # 检查常见的推理标签格式
+        reasoning_indicators = [
+            '<thinking>', '</thinking>',  # 标准thinking标签
+            '<thought>', '</thought>',    # thought标签
+            '思考：', '推理：', '分析：',     # 中文推理标识
+            'Thinking:', 'Reasoning:', 'Analysis:'  # 英文推理标识
+        ]
+        
+        for indicator in reasoning_indicators:
+            if indicator in content:
+                is_reasoning = True
+                break
+        
+        # 对于Thinking模型，如果内容看起来像推理过程，也归类为推理内容
+        if not is_reasoning and hasattr(self, 'model_config'):
+            model_name = self.model_config.get('name', '').lower()
+            if 'thinking' in model_name:
+                # 检查是否包含推理特征（如步骤、分析等）
+                reasoning_patterns = ['步骤', '首先', '然后', '因此', '所以', '分析', '考虑']
+                for pattern in reasoning_patterns:
+                    if pattern in content:
+                        is_reasoning = True
+                        break
+        
+        if is_reasoning:
+            self.accumulated_reasoning += content
+            self.reasoning_content.emit(content)
+        else:
+            self.accumulated_content += content
+            self.streaming_response.emit("content", content)
+    
+    def _send_normal_request_fallback(self):
+        """发送普通请求（作为流式请求的备用方案）"""
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.model_config['api_key']}"
@@ -509,7 +642,7 @@ class AIRequestThread(QThread):
             self.model_config["api_endpoint"],
             headers=headers,
             json=self.request_data,
-            timeout=60
+            timeout=200
         )
         
         if response.status_code != 200:
@@ -531,11 +664,10 @@ class AIRequestThread(QThread):
 class AIClientManager(QObject):
     """AI客户端管理器"""
     
-    response_chunk = pyqtSignal(str)  # 流式响应块信号
     response_completed = pyqtSignal(str)  # 响应完成信号
-    thinking_started = pyqtSignal()  # 开始思考信号
-    thinking_finished = pyqtSignal()  # 思考完成信号
     request_failed = pyqtSignal(str)  # 请求失败信号
+    streaming_response = pyqtSignal(str, str)  # 流式响应信号 (content_type, content)
+    reasoning_content = pyqtSignal(str)  # 推理内容信号
     
     def __init__(self, config_manager):
         super().__init__()
@@ -561,7 +693,6 @@ class AIClientManager(QObject):
             request_data = {
                 "model": model_config["model_id"],
                 "messages": messages,
-                "stream": model_config.get("stream", True),
                 "temperature": model_config.get("temperature", 0.3)
             }
             
@@ -572,11 +703,10 @@ class AIClientManager(QObject):
             self.current_thread = AIRequestThread(model_config, request_data)
             
             # 连接信号
-            self.current_thread.response_chunk.connect(self.response_chunk.emit)
             self.current_thread.response_completed.connect(self.response_completed.emit)
-            self.current_thread.thinking_started.connect(self.thinking_started.emit)
-            self.current_thread.thinking_finished.connect(self.thinking_finished.emit)
             self.current_thread.request_failed.connect(self.request_failed.emit)
+            self.current_thread.streaming_response.connect(self.streaming_response.emit)
+            self.current_thread.reasoning_content.connect(self.reasoning_content.emit)
             
             # 启动线程
             self.current_thread.start()
@@ -623,64 +753,7 @@ class AIClientManager(QObject):
         
         return messages
     
-    def _send_stream_request(self, model_config: dict, request_data: dict):
-        """发送流式请求"""
-        try:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {model_config['api_key']}"
-            }
-            
-            response = requests.post(
-                model_config["api_endpoint"],
-                headers=headers,
-                json=request_data,
-                stream=True,
-                timeout=60
-            )
-            
-            if response.status_code != 200:
-                error_detail = f"HTTP {response.status_code}: {response.text}"
-                logging.error(f"API请求失败 - {error_detail}")
-                raise Exception(f"API请求失败: {error_detail}")
-            
-            response.raise_for_status()
-            
-            full_response = ""
-            is_thinking = False
-            
-            for line in response.iter_lines():
-                if line:
-                    line_text = line.decode('utf-8')
-                    if line_text.startswith('data: '):
-                        data_text = line_text[6:]
-                        if data_text.strip() == '[DONE]':
-                            break
-                        
-                        try:
-                            data = json.loads(data_text)
-                            if 'choices' in data and len(data['choices']) > 0:
-                                delta = data['choices'][0].get('delta', {})
-                                content = delta.get('content', '')
-                                
-                                if content:
-                                    # 检查是否是思考内容
-                                    if '<thinking>' in content and not is_thinking:
-                                        is_thinking = True
-                                        self.thinking_started.emit()
-                                    elif '</thinking>' in content and is_thinking:
-                                        is_thinking = False
-                                        self.thinking_finished.emit()
-                                    elif not is_thinking:
-                                        full_response += content
-                                        self.response_chunk.emit(content)
-                        except json.JSONDecodeError:
-                            continue
-            
-            self.response_completed.emit(full_response)
-            
-        except Exception as e:
-            raise Exception(f"流式请求失败: {e}")
+
     
     def _send_normal_request(self, model_config: dict, request_data: dict):
         """发送普通请求"""
@@ -694,7 +767,7 @@ class AIClientManager(QObject):
                 model_config["api_endpoint"],
                 headers=headers,
                 json=request_data,
-                timeout=60
+                timeout=200
             )
             
             if response.status_code != 200:

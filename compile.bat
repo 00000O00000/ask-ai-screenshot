@@ -7,4 +7,4 @@ pyinstaller --onefile --hidden-import=pynput.keyboard --add-data "favicon.ico;fa
 
 xcopy /Y dist\*.exe .
 echo 编译完成，按任意键退出. . .
-pause>nulq
+pause>nul

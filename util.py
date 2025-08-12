@@ -41,12 +41,11 @@ class ConfigManager(QObject):
                 default_model_id1: {
                     "id": default_model_id1,
                     "name": "[硅基]Deepseek-V3",
-                    "model_id": "deepseek-ai/DeepSeek-R1",
+                    "model_id": "deepseek-ai/DeepSeek-V3",
                     "api_endpoint": "https://api.siliconflow.cn/v1",
                     "api_key": "",
                     "max_tokens": 0,
                     "temperature": 0.3,
-                    "stream": True,
                     "vision_support": False
                 },
                 default_model_id2: {
@@ -57,7 +56,6 @@ class ConfigManager(QObject):
                     "api_key": "",
                     "max_tokens": 0,
                     "temperature": 0.3,
-                    "stream": True,
                     "vision_support": False
                 },
                 default_model_id3: {
@@ -68,7 +66,6 @@ class ConfigManager(QObject):
                     "api_key": "",
                     "max_tokens": 0,
                     "temperature": 0.3,
-                    "stream": True,
                     "vision_support": True
                 },
             },
@@ -105,6 +102,14 @@ class ConfigManager(QObject):
                     "secret_key": "",
                     "region": "ap-beijing",
                     "language": "zh"
+                },
+                "vision_model": {
+                    "name": "[硅基]QvQ-72B-Preview",
+                    "model_id": "Qwen/QVQ-72B-Preview",
+                    "api_endpoint": "https://api.siliconflow.cn/v1",
+                    "api_key": "",
+                    "max_tokens": 0,
+                    "temperature": 0.3
                 }
             },
             "notification": {
@@ -130,13 +135,13 @@ class ConfigManager(QObject):
             }
         }
     
-    def load_config(self) -> bool:
+    def load_config(self, emit_signal: bool = True) -> bool:
         """加载配置文件"""
         try:
             if not os.path.exists(self.config_file):
                 # 配置文件不存在时，使用默认配置并保存
                 self.config = self._get_default_config()
-                self.save_config()
+                self.save_config(emit_signal=False)  # 初始化时不发射信号
                 return True
                 
             with open(self.config_file, 'r', encoding='utf-8') as f:
@@ -144,19 +149,21 @@ class ConfigManager(QObject):
                 
             # 直接使用加载的配置，不再合并默认配置
             self.config = loaded_config
-            self.config_changed.emit()
+            if emit_signal:
+                self.config_changed.emit()
             return True
             
         except Exception as e:
             logging.error(f"加载配置文件失败: {e}")
             return False
     
-    def save_config(self) -> bool:
+    def save_config(self, emit_signal: bool = True) -> bool:
         """保存配置文件"""
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, ensure_ascii=False, indent=2)
-            self.config_changed.emit()
+            if emit_signal:
+                self.config_changed.emit()
             return True
         except Exception as e:
             logging.error(f"保存配置文件失败: {e}")

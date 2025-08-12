@@ -39,9 +39,17 @@ class CustomMessageBox(QDialog):
         self.setFixedSize(400, 200)
         
         # 设置窗口图标
-        import os
-        if os.path.exists('favicon.ico'):
-            self.setWindowIcon(QIcon('favicon.ico'))
+        try:
+            from icon_data import get_icon_data
+            icon_data = get_icon_data()
+            pixmap = QPixmap()
+            pixmap.loadFromData(icon_data)
+            self.setWindowIcon(QIcon(pixmap))
+        except ImportError:
+            # 如果icon_data模块不存在，回退到文件方式
+            import os
+            if os.path.exists('favicon.ico'):
+                self.setWindowIcon(QIcon('favicon.ico'))
         
         # 设置样式
         self.setStyleSheet("""
@@ -182,6 +190,13 @@ class MarkdownViewer(QTextEdit):
         super().__init__(parent)
         self.setReadOnly(True)
         self.setup_style()
+        
+        # 性能优化：批量更新
+        self._pending_content = None
+        self._update_timer = QTimer()
+        self._update_timer.setSingleShot(True)
+        self._update_timer.timeout.connect(self._do_update)
+        self._update_timer.setInterval(50)  # 50ms延迟批量更新
     
     def setup_style(self):
         """设置样式"""
@@ -198,7 +213,18 @@ class MarkdownViewer(QTextEdit):
         """)
     
     def set_markdown(self, markdown_text: str):
-        """设置Markdown内容"""
+        """设置Markdown内容（支持批量更新优化）"""
+        self._pending_content = markdown_text
+        self._update_timer.start()  # 重启定时器
+    
+    def _do_update(self):
+        """执行实际的内容更新"""
+        if self._pending_content is None:
+            return
+            
+        markdown_text = self._pending_content
+        self._pending_content = None
+        
         if MARKDOWN_AVAILABLE:
             try:
                 # 配置markdown扩展
@@ -293,6 +319,10 @@ class MarkdownViewer(QTextEdit):
                 self.setPlainText(markdown_text)
         else:
             self.setPlainText(markdown_text)
+        
+        # 滚动到底部
+        scrollbar = self.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
     
     def append_text(self, text: str):
         """追加文本（流式显示）"""
@@ -463,8 +493,29 @@ class LargeNotificationWindow(QDialog):
     def init_ui(self):
         """初始化界面"""
         self.setWindowTitle("AI分析结果")
-        self.setModal(True)
+        self.setModal(False)  # 设置为非模态窗口，允许主窗口操作
+        # 设置为完全独立的窗口，不与任何父窗口关联
+        self.setWindowFlags(
+            Qt.WindowType.Window | 
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.WindowCloseButtonHint |
+            Qt.WindowType.WindowMinimizeButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint
+        )
         self.resize(800, 600)
+        
+        # 设置窗口图标
+        try:
+            from icon_data import get_icon_data
+            icon_data = get_icon_data()
+            pixmap = QPixmap()
+            pixmap.loadFromData(icon_data)
+            self.setWindowIcon(QIcon(pixmap))
+        except ImportError:
+            # 如果icon_data模块不存在，回退到文件方式
+            import os
+            if os.path.exists('favicon.ico'):
+                self.setWindowIcon(QIcon('favicon.ico'))
         
         # 设置样式
         self.setStyleSheet("""
@@ -539,8 +590,57 @@ class LargeNotificationWindow(QDialog):
     
     def append_content(self, content: str):
         """追加内容（流式显示）"""
-        self.current_text += content
-        self.content_viewer.set_markdown(self.current_text)
+        if not hasattr(self, 'current_response_content'):
+            self.current_response_content = ""
+        if not hasattr(self, 'current_reasoning_content'):
+            self.current_reasoning_content = ""
+        
+        self.current_response_content += content
+        self._update_display_content()
+    
+    def append_reasoning_content(self, reasoning: str):
+        """追加推理内容"""
+        if not hasattr(self, 'current_reasoning_content'):
+            self.current_reasoning_content = ""
+        if not hasattr(self, 'current_response_content'):
+            self.current_response_content = ""
+        
+        self.current_reasoning_content += reasoning
+        self._update_display_content()
+    
+    def _update_display_content(self):
+        """更新显示内容（使用批量更新优化）"""
+        if not hasattr(self, '_update_pending'):
+            self._update_pending = False
+            self._update_timer = QTimer()
+            self._update_timer.setSingleShot(True)
+            self._update_timer.timeout.connect(self._batch_update_display)
+            self._update_timer.setInterval(100)  # 100ms批量更新
+        
+        if not self._update_pending:
+            self._update_pending = True
+            self._update_timer.start()
+    
+    def _batch_update_display(self):
+        """批量更新显示内容"""
+        self._update_pending = False
+        
+        display_content = ""
+        
+        if self.current_reasoning_content:
+            display_content += f"<div style='background-color: #f0f8ff; padding: 15px; border-left: 4px solid #4a90e2; margin-bottom: 20px; border-radius: 6px;'>\n"
+            display_content += f"<h3 style='color: #4a90e2; margin: 0 0 10px 0; font-family: \"Microsoft YaHei\", sans-serif;'>🤔 思考内容</h3>\n"
+            display_content += f"<div style='font-family: \"Consolas\", \"Monaco\", monospace; font-size: 14px; color: #666; line-height: 1.5;'>{self.current_reasoning_content}</div>\n"
+            display_content += f"</div>\n\n"
+        
+        if self.current_response_content:
+            display_content += f"<div style='background-color: #f8fff8; padding: 15px; border-left: 4px solid #28a745; border-radius: 6px;'>\n"
+            display_content += f"<h3 style='color: #28a745; margin: 0 0 10px 0; font-family: \"Microsoft YaHei\", sans-serif;'>💬 回复内容</h3>\n"
+            display_content += f"<div style='font-family: \"Microsoft YaHei\", sans-serif; line-height: 1.6;'>{self.current_response_content}</div>\n"
+            display_content += f"</div>"
+        
+        self.current_text = display_content
+        self.content_viewer.set_markdown(display_content)
     
     def copy_content(self):
         """复制内容到剪贴板"""
@@ -594,25 +694,34 @@ class NotificationWindow:
             if cls._large_notification and cls._large_notification.isVisible():
                 cls._large_notification.close()
             
-            # 创建新的大通知
-            cls._large_notification = LargeNotificationWindow(message, parent)
+            # 创建新的大通知，不设置父窗口以确保完全独立
+            cls._large_notification = LargeNotificationWindow(message, None)
             cls._large_notification.show()
             
         except Exception as e:
             logging.error(f"显示大通知失败: {e}")
     
     @classmethod
-    def show_stream_notification(cls, message: str, parent=None):
-        """显示流式通知（大窗口）"""
+    def show_large_notification_streaming(cls, initial_message: str, parent=None):
+        """显示流式大通知"""
         try:
-            if not cls._large_notification or not cls._large_notification.isVisible():
-                cls._large_notification = LargeNotificationWindow("", parent)
-                cls._large_notification.show()
+            # 关闭之前的大通知
+            if cls._large_notification and cls._large_notification.isVisible():
+                cls._large_notification.close()
             
-            cls._large_notification.append_content(message)
+            # 创建新的大通知（用于流式显示），不设置父窗口以确保完全独立
+            cls._large_notification = LargeNotificationWindow(initial_message, None)
+            cls._large_notification.current_reasoning_content = ""
+            cls._large_notification.current_response_content = ""
+            cls._large_notification.show()
+            
+            return cls._large_notification
             
         except Exception as e:
-            logging.error(f"显示流式通知失败: {e}")
+            logging.error(f"显示流式大通知失败: {e}")
+            return None
+    
+
     
     @classmethod
     def close_all_notifications(cls):

@@ -6,7 +6,7 @@ AI截图分析 - 高级截图覆盖层
 """
 
 import logging
-from PIL import ImageGrab
+from PIL import ImageGrab, Image
 from PyQt6.QtCore import Qt, QRect, QPoint, pyqtSignal
 from PyQt6.QtGui import (
     QPainter, QPen, QColor, QFont, 
@@ -383,17 +383,27 @@ class ScreenshotOverlay(QWidget):
             return
             
         try:
-            # 截取选择区域
-            x = self.current_rect.x()
-            y = self.current_rect.y()
-            width = self.current_rect.width()
-            height = self.current_rect.height()
+            # 获取屏幕信息
+            screen = QApplication.primaryScreen()
+            device_pixel_ratio = screen.devicePixelRatio()
+            
+            # 截取选择区域 - 考虑DPI缩放
+            x = int(self.current_rect.x() * device_pixel_ratio)
+            y = int(self.current_rect.y() * device_pixel_ratio)
+            width = int(self.current_rect.width() * device_pixel_ratio)
+            height = int(self.current_rect.height() * device_pixel_ratio)
             
             # 使用PIL截取指定区域
             screenshot = ImageGrab.grab(bbox=(x, y, x + width, y + height))
             
+            # 如果DPI缩放不是1，需要调整图片大小回到原始尺寸
+            if device_pixel_ratio != 1.0:
+                original_width = self.current_rect.width()
+                original_height = self.current_rect.height()
+                screenshot = screenshot.resize((original_width, original_height), Image.LANCZOS)
+            
             if screenshot:
-                logging.info(f"截图确认: {width}x{height} at ({x}, {y})")
+                logging.info(f"截图确认: {self.current_rect.width()}x{self.current_rect.height()} at ({self.current_rect.x()}, {self.current_rect.y()}), DPI: {device_pixel_ratio}")
                 self.screenshot_confirmed.emit(screenshot)
             else:
                 logging.error("截图失败")

@@ -10,6 +10,7 @@ import uuid
 import time
 import logging
 
+
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QLabel, QPushButton, QTextEdit, QComboBox, QLineEdit, QSpinBox,
@@ -17,7 +18,7 @@ from PyQt6.QtWidgets import (
     QGroupBox, QFormLayout, QGridLayout, QFileDialog
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QPixmap
 
 from custom_window import CustomMessageBox, NotificationWindow, MarkdownViewer
 from util import TaskManager
@@ -64,14 +65,24 @@ class MainWindow(QMainWindow):
         self.setup_hotkey()
         self.load_config_to_ui()  # 加载配置到界面控件
         
+
+        
     def init_ui(self):
         """初始化界面"""
         self.setWindowTitle("AI截图分析")
         self.setGeometry(100, 100, 1000, 600)
         
         # 设置窗口图标
-        if os.path.exists('favicon.ico'):
-            self.setWindowIcon(QIcon('favicon.ico'))
+        try:
+            from icon_data import get_icon_data
+            icon_data = get_icon_data()
+            pixmap = QPixmap()
+            pixmap.loadFromData(icon_data)
+            self.setWindowIcon(QIcon(pixmap))
+        except ImportError:
+            # 如果icon_data模块不存在，回退到文件方式
+            if os.path.exists('favicon.ico'):
+                self.setWindowIcon(QIcon('favicon.ico'))
         
         # 设置主题颜色和全局样式
         self.setStyleSheet("""
@@ -376,7 +387,7 @@ class MainWindow(QMainWindow):
         self.ai_temperature_spin = QDoubleSpinBox()
         self.ai_temperature_spin.setRange(0.0, 2.0)
         self.ai_temperature_spin.setSingleStep(0.1)
-        self.ai_stream_check = QCheckBox()
+
         self.ai_vision_check = QCheckBox()
         
         config_layout.addRow("显示名称:", self.ai_name_edit)
@@ -385,7 +396,7 @@ class MainWindow(QMainWindow):
         config_layout.addRow("API Key:", self.ai_key_edit)
         config_layout.addRow("最大令牌数:", self.ai_max_tokens_spin)
         config_layout.addRow("温度:", self.ai_temperature_spin)
-        config_layout.addRow("流式输出:", self.ai_stream_check)
+
         config_layout.addRow("支持视觉:", self.ai_vision_check)
         
         layout.addWidget(config_panel)
@@ -458,7 +469,7 @@ class MainWindow(QMainWindow):
         list_layout = QVBoxLayout(list_panel)
         
         self.ocr_config_list = QListWidget()
-        self.ocr_config_list.addItems(["OCR引擎选择", "腾讯云配置", "第三方配置"])
+        self.ocr_config_list.addItems(["OCR引擎选择", "腾讯云配置", "视觉模型配置", "引擎说明"])
         self.ocr_config_list.currentItemChanged.connect(self.on_ocr_config_selected)
         list_layout.addWidget(self.ocr_config_list)
         
@@ -478,7 +489,7 @@ class MainWindow(QMainWindow):
         engine_layout = QFormLayout(self.ocr_engine_panel)
         
         self.ocr_engine_combo = QComboBox()
-        self.ocr_engine_combo.addItems(["新野图床+云智OCR（免费）", "腾讯云OCR"])
+        self.ocr_engine_combo.addItems(["新野图床+云智OCR（免费）", "腾讯云OCR", "视觉模型OCR"])
         self.ocr_engine_combo.currentTextChanged.connect(self.on_ocr_engine_changed)
         self.ocr_language_combo = QComboBox()
         self.ocr_language_combo.addItems(["中文", "英文", "中英文混合"])
@@ -498,25 +509,70 @@ class MainWindow(QMainWindow):
         tencent_layout.addRow("Secret ID:", self.tencent_id_edit)
         tencent_layout.addRow("Secret Key:", self.tencent_key_edit)
         
-        # 新野OCR配置
-        self.xinyew_config_panel = QGroupBox("新野图床+云智OCR（免费公益接口）")
-        xinyew_layout = QVBoxLayout(self.xinyew_config_panel)
+        # 引擎说明
+        self.engine_info_panel = QGroupBox("OCR引擎说明")
+        engine_info_layout = QVBoxLayout(self.engine_info_panel)
         
         info_label = QLabel(
-            "• 完全免费的公益OCR接口\n"
-            "• 无需配置API密钥\n"
-            "• 支持中英文识别\n"
-            "• 注意：免费接口可能不稳定，请谅解"
+            "<h3>1. 新野图床+云智OCR</h3>"
+            "<p><b>[方便]</b> 使用公益接口，免费无限制，无需额外配置</p>"
+            "<p><b>缺点：</b> 无隐私保护、质量不高、不稳定，有相关要求请勿选择</p>"
+            "<br>"
+            "<h3>2. 腾讯云OCR</h3>"
+            "<p><b>[通用]</b> 质量平衡，速度快，隐私性更好</p>"
+            "<p><b>缺点：</b> 需要配置私有密钥，有 1000次/月 免费额度</p>"
+            "<br>"
+            "<h3>3. 视觉模型OCR</h3>"
+            "<p><b>[质量]</b> 使用视觉模型，质量好</p>"
+            "<p><b>缺点：</b> 速度慢，高成本，不适合即时响应情境</p>"
         )
-        info_label.setStyleSheet("color: #666; font-size: 12px; padding: 10px;")
-        xinyew_layout.addWidget(info_label)
+        info_label.setStyleSheet("color: #333; font-size: 12px; padding: 15px; line-height: 1.4;")
+        info_label.setWordWrap(True)
+        engine_info_layout.addWidget(info_label)
+        
+        # 视觉模型配置
+        self.vision_model_config_panel = QGroupBox("视觉模型配置")
+        vision_layout = QFormLayout(self.vision_model_config_panel)
+        
+        self.vision_model_name_edit = QLineEdit()
+        self.vision_model_id_edit = QLineEdit()
+        self.vision_api_endpoint_edit = QLineEdit()
+        self.vision_api_key_edit = QLineEdit()
+        self.vision_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.vision_max_tokens_spin = QSpinBox()
+        self.vision_max_tokens_spin.setRange(0, 100000)
+        self.vision_temperature_spin = QDoubleSpinBox()
+        self.vision_temperature_spin.setRange(0.0, 2.0)
+        self.vision_temperature_spin.setSingleStep(0.1)
+        self.vision_temperature_spin.setDecimals(1)
+        
+        self.vision_prompt_edit = QTextEdit()
+        self.vision_prompt_edit.setMaximumHeight(80)
+        self.vision_prompt_edit.setPlaceholderText("请输入OCR识别的提示词...")
+        
+        vision_layout.addRow("模型名称:", self.vision_model_name_edit)
+        vision_layout.addRow("模型ID:", self.vision_model_id_edit)
+        vision_layout.addRow("API端点:", self.vision_api_endpoint_edit)
+        vision_layout.addRow("API密钥:", self.vision_api_key_edit)
+        vision_layout.addRow("最大令牌数:", self.vision_max_tokens_spin)
+        vision_layout.addRow("温度:", self.vision_temperature_spin)
+        vision_layout.addRow("OCR提示词:", self.vision_prompt_edit)
         
         self.ocr_config_layout.addWidget(self.ocr_engine_panel)
         self.ocr_config_layout.addWidget(self.tencent_config_panel)
-        self.ocr_config_layout.addWidget(self.xinyew_config_panel)
+        self.ocr_config_layout.addWidget(self.vision_model_config_panel)
+        self.ocr_config_layout.addWidget(self.engine_info_panel)
         self.ocr_config_layout.addStretch()
         
+        # 初始化时隐藏所有面板
+        self.tencent_config_panel.hide()
+        self.vision_model_config_panel.hide()
+        self.engine_info_panel.hide()
+        
         layout.addWidget(self.ocr_config_stack)
+        
+        # 默认选择OCR引擎选择
+        self.ocr_config_list.setCurrentRow(0)
     
     def create_other_config_page(self):
         """创建其他配置页面"""
@@ -708,7 +764,7 @@ class MainWindow(QMainWindow):
         <h2>注意事项</h2>
         <ul>
         <li>只有多模态模型允许直接提交图片，目前常用的多模态模型有 Claude 3/4 ，gpt-4o，QvQ-72B。而Qwen3全系列、Deepseek系列、Kimi-K2都不是多模态模型，需要先OCR后再提交。若发现模型报错400，请检查此配置是否正确。</li>
-        <li>需要联网功能，请使用秘塔API，有赠送额度，且付费很便宜。</li>
+        <li>若需要联网功能，请使用秘塔API，赠送额度不少，且付费很便宜。</li>
         </ul>
         <h2>推荐AI服务商</h2>
         <table style="width: 100%;border-collapse: collapse;">
@@ -759,8 +815,10 @@ class MainWindow(QMainWindow):
         </li>
         </ol>
         <h2>许可证</h2>
+        <p>MIT License</p>
         <p>本项目仅供学习和个人使用，不得用于任何商业化用途。</p>
-        <p>图标来源iconfont</p>
+        <p>Github项目地址：https://github.com/00000O00000/ask-ai-screenshot</p>
+        <p>软件图标来源：iconfont</p>
         <p>https://www.iconfont.cn/collections/detail?spm=a313x.user_detail.i1.dc64b3430.6b413a81uspeMj&amp;cid=17714</p>
         <h2>更新日志</h2>
         <h3>v1.0.0</h3>
@@ -789,11 +847,10 @@ class MainWindow(QMainWindow):
         self.ocr_manager.ocr_failed.connect(self.on_ocr_failed)
         
         # AI客户端管理器信号
-        self.ai_client_manager.response_chunk.connect(self.on_ai_response_chunk)
         self.ai_client_manager.response_completed.connect(self.on_ai_response_completed)
-        self.ai_client_manager.thinking_started.connect(self.on_thinking_started)
-        self.ai_client_manager.thinking_finished.connect(self.on_thinking_finished)
         self.ai_client_manager.request_failed.connect(self.on_ai_request_failed)
+        self.ai_client_manager.streaming_response.connect(self.on_ai_streaming_response)
+        self.ai_client_manager.reasoning_content.connect(self.on_ai_reasoning_content)
         
         # 邮件管理器信号
         self.email_manager.email_sent.connect(self.on_email_sent)
@@ -852,6 +909,8 @@ class MainWindow(QMainWindow):
             CustomMessageBox.warning(self, "警告", "有任务正在运行，请等待完成后再试")
             return
         
+
+        
         # 获取当前选择的提示词
         prompt_name = self.prompt_combo.currentText()
         if not prompt_name:
@@ -888,7 +947,8 @@ class MainWindow(QMainWindow):
             
             # 启动OCR工作线程
             self.worker_thread = WorkerThread(self.ocr_manager.recognize_image, self.current_image)
-            self.worker_thread.task_completed.connect(lambda text: self.send_ai_request(prompt_config, text, None))  # 不传递图片
+            self.worker_thread.task_completed.connect(lambda text: self.on_ocr_completed(text))
+            self.worker_thread.task_completed.connect(lambda text: self.send_ai_request(prompt_config, text, None))
             self.worker_thread.task_failed.connect(self.on_ocr_failed)
             self.worker_thread.start()
         else:  # 直接提交图片
@@ -905,6 +965,26 @@ class MainWindow(QMainWindow):
             self.task_manager.finish_task()
             return
         
+        # 清空输出区域，准备接收流式内容
+        self.output_text.set_markdown("")
+        self.current_reasoning_content = ""
+        self.current_response_content = ""
+        
+        # 初始化性能优化相关属性
+        self._update_pending = False
+        self._update_timer = getattr(self, '_update_timer', None)
+        if not self._update_timer:
+            from PyQt6.QtCore import QTimer
+            self._update_timer = QTimer()
+            self._update_timer.setSingleShot(True)
+            self._update_timer.timeout.connect(self._batch_update_display)
+            self._update_timer.setInterval(100)  # 100ms批量更新
+        
+        # 根据通知配置准备大通知弹窗（如果需要）
+        notification_type = self.config_manager.get_config("notification.type")
+        if notification_type == "large_popup":
+            self.prepare_large_notification()
+        
         # 发送请求
         self.ai_client_manager.send_request(
             model_id,
@@ -913,52 +993,87 @@ class MainWindow(QMainWindow):
             ocr_text
         )
     
-    def on_thinking_started(self):
-        """AI开始思考"""
-        self.output_text.append_text("正在深入思考...")
-    
-    def on_thinking_finished(self):
-        """AI思考完成"""
-        # 移除"正在深入思考"文本
-        content = self.output_text.toPlainText()
-        content = content.replace("正在深入思考...", "")
-        self.output_text.set_markdown(content)
-    
-    def on_ai_response_chunk(self, chunk):
-        """AI响应块"""
-        self.output_text.append_text(chunk)
-        
-        # 实时更新通知窗口
-        notification_type = self.config_manager.get_config("notification.type")
-        if notification_type == "large_popup":
-            NotificationWindow.show_stream_notification(chunk)
-        elif notification_type == "small_popup":
-            # 如果小窗已存在，追加内容；否则创建新窗口
-            if hasattr(self, 'current_small_window') and self.current_small_window and self.current_small_window.isVisible():
-                self.current_small_window.append_content(chunk)
-            else:
-                from custom_window import SmallNotificationWindow
-                self.current_small_window = SmallNotificationWindow(chunk)
-                self.current_small_window.show()
+
     
     def on_ai_response_completed(self, response):
         """AI响应完成"""
         self.status_label.setText("分析完成")
         self.task_manager.finish_task()
         
+        # 更新主窗口显示（如果没有流式内容，则显示完整响应）
+        if not hasattr(self, 'current_response_content') or not self.current_response_content:
+            self.output_text.set_markdown(response)
+        
         # 根据通知配置显示结果
         self.show_notification(response)
+    
+    def on_ai_streaming_response(self, content_type, content):
+        """处理AI流式响应"""
+        if content_type == "content":
+            self.current_response_content += content
+            self._update_display_content()
+            
+            # 更新大通知弹窗（如果存在）
+            if hasattr(self, 'current_large_notification') and self.current_large_notification:
+                self.current_large_notification.append_content(content)
+    
+    def on_ai_reasoning_content(self, reasoning):
+        """处理AI推理内容"""
+        self.current_reasoning_content += reasoning
+        self._update_display_content()
+        
+        # 更新大通知弹窗（如果存在）
+        if hasattr(self, 'current_large_notification') and self.current_large_notification:
+            self.current_large_notification.append_reasoning_content(reasoning)
+    
+    def _update_display_content(self):
+        """更新显示内容（使用批量更新优化）"""
+        if not self._update_pending:
+            self._update_pending = True
+            self._update_timer.start()
+    
+    def _batch_update_display(self):
+        """批量更新显示内容"""
+        self._update_pending = False
+        
+        display_content = ""
+        
+        if self.current_reasoning_content:
+            display_content += f"<div style='background-color: #f0f8ff; padding: 10px; border-left: 4px solid #4a90e2; margin-bottom: 15px; border-radius: 4px;'>\n"
+            display_content += f"<h4 style='color: #4a90e2; margin: 0 0 8px 0; font-family: \"Microsoft YaHei\", sans-serif;'>🤔 思考内容</h4>\n"
+            display_content += f"<div style='font-family: \"Consolas\", \"Monaco\", monospace; font-size: 13px; color: #666;'>{self.current_reasoning_content}</div>\n"
+            display_content += f"</div>\n\n"
+        
+        if self.current_response_content:
+            display_content += f"<div style='background-color: #f8fff8; padding: 10px; border-left: 4px solid #28a745; border-radius: 4px;'>\n"
+            display_content += f"<h4 style='color: #28a745; margin: 0 0 8px 0; font-family: \"Microsoft YaHei\", sans-serif;'>💬 回复内容</h4>\n"
+            display_content += f"<div style='font-family: \"Microsoft YaHei\", sans-serif;'>{self.current_response_content}</div>\n"
+            display_content += f"</div>"
+        
+        self.output_text.set_markdown(display_content)
+    
+    def prepare_large_notification(self):
+        """准备大通知弹窗"""
+        from custom_window import NotificationWindow
+        self.current_large_notification = NotificationWindow.show_large_notification_streaming("", self)
     
     def show_notification(self, content):
         """显示通知"""
         notification_type = self.config_manager.get_config("notification.type")
         
         if notification_type == "small_popup":
-            NotificationWindow.show_small_notification(content)
+            # 小弹窗只显示最终回答内容，不显示推理内容
+            final_content = getattr(self, 'current_response_content', '') or content
+            NotificationWindow.show_small_notification(final_content)
         elif notification_type == "large_popup":
-            NotificationWindow.show_large_notification(content)
+            # 大弹窗已经在流式过程中显示，这里不需要额外操作
+            pass
         elif notification_type == "smtp":
             self.email_manager.send_email("AI分析结果", content)
+    
+
+    
+
     
     def on_ocr_completed(self, text):
         """OCR完成"""
@@ -1002,9 +1117,12 @@ class MainWindow(QMainWindow):
     
     def on_config_changed(self):
         """配置改变"""
+        # 只更新下拉框，不重新加载整个UI配置
+        # 避免在保存配置时触发UI重载导致配置丢失
         self.update_prompt_combo()
         self.update_prompt_model_combo()
-        self.load_config_to_ui()
+        # 注释掉 load_config_to_ui() 以避免循环更新
+        # self.load_config_to_ui()
     
     def update_prompt_combo(self):
         """更新提示词下拉框"""
@@ -1052,7 +1170,7 @@ class MainWindow(QMainWindow):
         # 加载OCR配置
         ocr_config = self.config_manager.get_config("ocr")
         if ocr_config:
-            engine_map = {"xinyew": 0, "tencent": 1}
+            engine_map = {"xinyew": 0, "tencent": 1, "vision_model": 2}
             self.ocr_engine_combo.setCurrentIndex(engine_map.get(ocr_config.get("engine"), 0))
             
             # 加载OCR语言配置
@@ -1062,6 +1180,16 @@ class MainWindow(QMainWindow):
             tencent_config = ocr_config.get("tencent", {})
             self.tencent_id_edit.setText(tencent_config.get("secret_id", ""))
             self.tencent_key_edit.setText(tencent_config.get("secret_key", ""))
+            
+            # 加载视觉模型配置
+            vision_config = ocr_config.get("vision_model", {})
+            self.vision_model_name_edit.setText(vision_config.get("name", ""))
+            self.vision_model_id_edit.setText(vision_config.get("model_id", ""))
+            self.vision_api_endpoint_edit.setText(vision_config.get("api_endpoint", ""))
+            self.vision_api_key_edit.setText(vision_config.get("api_key", ""))
+            self.vision_max_tokens_spin.setValue(vision_config.get("max_tokens", 0))
+            self.vision_temperature_spin.setValue(vision_config.get("temperature", 0.3))
+            self.vision_prompt_edit.setPlainText(vision_config.get("prompt", "请识别图片中的文字内容，并格式化后给我。只返回识别到的文字，不要添加任何解释或说明。"))
         
         # 加载通知配置
         notification_config = self.config_manager.get_config("notification")
@@ -1104,6 +1232,12 @@ class MainWindow(QMainWindow):
         # 更新截图按钮文本显示当前快捷键
         self.update_screenshot_button_text()
     
+
+    
+
+    
+
+    
     def update_screenshot_button_text(self):
         """更新截图按钮文本以显示当前快捷键"""
         hotkey_config = self.config_manager.get_config("hotkey")
@@ -1139,7 +1273,7 @@ class MainWindow(QMainWindow):
                 self.ai_key_edit.setText(model_config.get("api_key", ""))
                 self.ai_max_tokens_spin.setValue(model_config.get("max_tokens", 0))
                 self.ai_temperature_spin.setValue(model_config.get("temperature", 0.3))
-                self.ai_stream_check.setChecked(model_config.get("stream", True))
+
                 self.ai_vision_check.setChecked(model_config.get("vision_support", True))
     
     def add_ai_model(self):
@@ -1153,7 +1287,7 @@ class MainWindow(QMainWindow):
             "api_key": "",
             "max_tokens": 0,
             "temperature": 0.3,
-            "stream": True,
+
             "vision_support": True
         }
         
@@ -1246,7 +1380,7 @@ class MainWindow(QMainWindow):
             "api_key": self.ai_key_edit.text().strip(),
             "max_tokens": self.ai_max_tokens_spin.value(),
             "temperature": self.ai_temperature_spin.value(),
-            "stream": self.ai_stream_check.isChecked(),
+
             "vision_support": self.ai_vision_check.isChecked()
         }
         
@@ -1410,15 +1544,18 @@ class MainWindow(QMainWindow):
             # 隐藏所有面板
             self.ocr_engine_panel.hide()
             self.tencent_config_panel.hide()
-            self.xinyew_config_panel.hide()
+            self.vision_model_config_panel.hide()
+            self.engine_info_panel.hide()
             
             # 显示对应面板
             if config_name == "OCR引擎选择":
                 self.ocr_engine_panel.show()
             elif config_name == "腾讯云配置":
                 self.tencent_config_panel.show()
-            elif config_name == "第三方配置":
-                self.xinyew_config_panel.show()
+            elif config_name == "视觉模型配置":
+                self.vision_model_config_panel.show()
+            elif config_name == "引擎说明":
+                self.engine_info_panel.show()
     
     # 其他配置相关方法
     def on_other_config_selected(self, current, previous):
@@ -1469,6 +1606,7 @@ class MainWindow(QMainWindow):
             if self.config_manager.import_config(file_path):
                 CustomMessageBox.information(self, "成功", "配置文件导入成功")
                 self.setup_hotkey()  # 重新设置快捷键
+                self.load_config_to_ui()  # 导入后需要重新加载UI
             else:
                 CustomMessageBox.critical(self, "错误", "配置文件导入失败")
     
@@ -1478,6 +1616,7 @@ class MainWindow(QMainWindow):
             if self.config_manager.reset_config():
                 CustomMessageBox.information(self, "成功", "配置已重置为默认值")
                 self.setup_hotkey()  # 重新设置快捷键
+                self.load_config_to_ui()  # 重置后需要重新加载UI
             else:
                 CustomMessageBox.critical(self, "错误", "重置配置失败")
     
@@ -1522,7 +1661,7 @@ class MainWindow(QMainWindow):
         """静默保存当前配置（不显示弹窗）"""
         try:
             self._save_config_data()
-            self.config_manager.save_config()
+            self.config_manager.save_config(emit_signal=False)  # 避免循环信号
         except Exception as e:
             logging.error(f"保存配置失败: {e}")
     
@@ -1538,7 +1677,10 @@ class MainWindow(QMainWindow):
             # 获取API端点，如果不以/chat/completions结尾则添加
             api_endpoint = self.ai_endpoint_edit.text().strip()
             if api_endpoint and not api_endpoint.endswith('/chat/completions'):
-                api_endpoint += '/chat/completions'
+                if api_endpoint.endswith('/'):
+                    api_endpoint = api_endpoint.rstrip('/') + '/chat/completions'
+                else:
+                    api_endpoint = api_endpoint + '/chat/completions'
             
             model_config = {
                 "id": model_id,
@@ -1548,12 +1690,12 @@ class MainWindow(QMainWindow):
                 "api_key": self.ai_key_edit.text(),
                 "max_tokens": self.ai_max_tokens_spin.value(),
                 "temperature": self.ai_temperature_spin.value(),
-                "stream": self.ai_stream_check.isChecked(),
+
                 "vision_support": self.ai_vision_check.isChecked()
             }
             
             self.config_manager.set_config(f"ai_models.{model_id}", model_config)
-            self.config_manager.save_config()
+            self.config_manager.save_config(emit_signal=False)  # 避免循环信号
             
             # 更新列表项显示的名称
             for i in range(self.ai_model_list.count()):
@@ -1568,11 +1710,21 @@ class MainWindow(QMainWindow):
         """自动保存OCR配置（不显示弹窗）"""
         try:
             # 保存OCR配置
-            engine_map = {0: "xinyew", 1: "tencent"}
+            engine_map = {0: "xinyew", 1: "tencent", 2: "vision_model"}
             self.config_manager.set_config("ocr.engine", engine_map.get(self.ocr_engine_combo.currentIndex(), "xinyew"))
             
             self.config_manager.set_config("ocr.tencent.secret_id", self.tencent_id_edit.text())
             self.config_manager.set_config("ocr.tencent.secret_key", self.tencent_key_edit.text())
+            
+            # 保存视觉模型配置
+            if hasattr(self, 'vision_model_name_edit'):
+                self.config_manager.set_config("ocr.vision_model.name", self.vision_model_name_edit.text())
+                self.config_manager.set_config("ocr.vision_model.model_id", self.vision_model_id_edit.text())
+                self.config_manager.set_config("ocr.vision_model.api_endpoint", self.vision_api_endpoint_edit.text())
+                self.config_manager.set_config("ocr.vision_model.api_key", self.vision_api_key_edit.text())
+                self.config_manager.set_config("ocr.vision_model.max_tokens", self.vision_max_tokens_spin.value())
+                self.config_manager.set_config("ocr.vision_model.temperature", self.vision_temperature_spin.value())
+                self.config_manager.set_config("ocr.vision_model.prompt", self.vision_prompt_edit.toPlainText())
             
             self.config_manager.save_config()
         except Exception as e:
@@ -1594,37 +1746,49 @@ class MainWindow(QMainWindow):
             # 保存快捷键配置
             self.config_manager.set_config("hotkey.screenshot", self.hotkey_edit.text())
             
-            # 保存截图配置
-            quality_map = {0: "low", 1: "medium", 2: "high"}
+            # 保存截图配置（修正映射以保持一致性）
+            quality_map = {0: "high", 1: "medium", 2: "low"}
             self.config_manager.set_config("screenshot.quality", quality_map.get(self.screenshot_quality_combo.currentIndex(), "high"))
             
-            format_map = {0: "png", 1: "jpg"}
-            self.config_manager.set_config("screenshot.format", format_map.get(self.screenshot_format_combo.currentIndex(), "png"))
+            format_map = {0: "PNG", 1: "JPEG", 2: "BMP"}
+            self.config_manager.set_config("screenshot.format", format_map.get(self.screenshot_format_combo.currentIndex(), "PNG"))
             
-            # 保存日志配置
-            level_map = {0: "DEBUG", 1: "INFO", 2: "WARNING", 3: "ERROR"}
-            self.config_manager.set_config("log.level", level_map.get(self.log_level_combo.currentIndex(), "INFO"))
+            # 保存日志配置（修正映射以保持一致性）
+            level_map = {0: "DEBUG", 1: "INFO", 2: "WARNING", 3: "ERROR", 4: "CRITICAL"}
+            self.config_manager.set_config("logging.level", level_map.get(self.log_level_combo.currentIndex(), "INFO"))
             
-            self.config_manager.save_config()
+            self.config_manager.save_config(emit_signal=False)  # 避免循环信号
         except Exception as e:
             logging.error(f"自动保存其他配置失败: {e}")
     
     def _save_config_data(self):
         """保存配置数据的通用方法"""
-        # 保存OCR配置
-        engine_map = {0: "xinyew", 1: "tencent"}
-        self.config_manager.set_config("ocr.engine", engine_map.get(self.ocr_engine_combo.currentIndex(), "xinyew"))
+        # 保存OCR配置 - 使用文本映射保持与自动保存一致
+        ocr_engine_text = self.ocr_engine_combo.currentText()
+        engine_map = {"新野图床+云智OCR（免费）": "xinyew", "腾讯云OCR": "tencent", "视觉模型OCR": "vision_model"}
+        self.config_manager.set_config("ocr.engine", engine_map.get(ocr_engine_text, "xinyew"))
         
-        # 保存OCR语言配置
-        language_map = {0: "zh", 1: "en", 2: "zh-en"}
-        self.config_manager.set_config("ocr.language", language_map.get(self.ocr_language_combo.currentIndex(), "zh-en"))
+        # 保存OCR语言配置 - 使用文本映射保持与自动保存一致
+        ocr_language_text = self.ocr_language_combo.currentText()
+        language_map = {"中文": "zh", "英文": "en", "中英文混合": "zh-en"}
+        self.config_manager.set_config("ocr.language", language_map.get(ocr_language_text, "zh-en"))
         
         self.config_manager.set_config("ocr.tencent.secret_id", self.tencent_id_edit.text())
         self.config_manager.set_config("ocr.tencent.secret_key", self.tencent_key_edit.text())
         
-        # 保存通知配置
-        type_map = {0: "none", 1: "small_popup", 2: "large_popup", 3: "smtp"}
-        self.config_manager.set_config("notification.type", type_map.get(self.notification_type_combo.currentIndex(), "none"))
+        # 保存视觉模型配置
+        self.config_manager.set_config("ocr.vision_model.name", self.vision_model_name_edit.text())
+        self.config_manager.set_config("ocr.vision_model.model_id", self.vision_model_id_edit.text())
+        self.config_manager.set_config("ocr.vision_model.api_endpoint", self.vision_api_endpoint_edit.text())
+        self.config_manager.set_config("ocr.vision_model.api_key", self.vision_api_key_edit.text())
+        self.config_manager.set_config("ocr.vision_model.max_tokens", self.vision_max_tokens_spin.value())
+        self.config_manager.set_config("ocr.vision_model.temperature", self.vision_temperature_spin.value())
+        self.config_manager.set_config("ocr.vision_model.prompt", self.vision_prompt_edit.toPlainText())
+        
+        # 保存通知配置 - 使用文本映射保持与自动保存一致
+        notification_text = self.notification_type_combo.currentText()
+        type_map = {"不额外显示": "none", "小弹窗显示": "small_popup", "大弹窗显示": "large_popup", "SMTP发送": "smtp"}
+        self.config_manager.set_config("notification.type", type_map.get(notification_text, "none"))
         
         self.config_manager.set_config("notification.smtp.server", self.smtp_server_edit.text())
         self.config_manager.set_config("notification.smtp.port", self.smtp_port_spin.value())
@@ -1638,21 +1802,26 @@ class MainWindow(QMainWindow):
         # 更新截图按钮文本显示新的快捷键
         self.update_screenshot_button_text()
         
-        # 保存截图配置（只保留质量和格式）
-        quality_map = {0: "high", 1: "medium", 2: "low"}
-        self.config_manager.set_config("screenshot.quality", quality_map.get(self.screenshot_quality_combo.currentIndex(), "high"))
+        # 保存截图配置 - 使用文本映射保持与自动保存一致
+        quality_text = self.screenshot_quality_combo.currentText()
+        quality_map = {"高质量": "high", "中等质量": "medium", "低质量": "low"}
+        self.config_manager.set_config("screenshot.quality", quality_map.get(quality_text, "high"))
         
-        format_map = {0: "PNG", 1: "JPEG", 2: "BMP"}
-        self.config_manager.set_config("screenshot.format", format_map.get(self.screenshot_format_combo.currentIndex(), "PNG"))
+        # 截图格式直接使用文本值
+        self.config_manager.set_config("screenshot.format", self.screenshot_format_combo.currentText())
         
-        # 保存日志配置
-        level_map = {0: "DEBUG", 1: "INFO", 2: "WARNING", 3: "ERROR", 4: "CRITICAL"}
-        self.config_manager.set_config("logging.level", level_map.get(self.log_level_combo.currentIndex(), "INFO"))
+        # 保存日志配置 - 直接使用文本值
+        self.config_manager.set_config("logging.level", self.log_level_combo.currentText())
     
     def start_hotkey_capture(self):
         """开始捕获快捷键"""
         if self.is_capturing_hotkey:
             return
+            
+        # 先解绑当前的快捷键
+        if hasattr(self.screenshot_manager, 'listener') and self.screenshot_manager.listener:
+            self.screenshot_manager.listener.stop()
+            self.screenshot_manager.listener = None
             
         self.is_capturing_hotkey = True
         self.captured_keys.clear()
@@ -1734,12 +1903,15 @@ class MainWindow(QMainWindow):
         # 重新设置快捷键
         self.setup_hotkey()
         
+        # 更新主页按钮的快捷键显示文本
+        self.update_screenshot_button_text()
+        
         CustomMessageBox.information(self, "成功", f"快捷键已设置为: {hotkey_str}")
     
     def on_ocr_engine_changed(self, text):
         """OCR引擎选择变化时自动保存"""
         try:
-            engine_map = {"新野图床+云智OCR（免费）": "xinyew", "腾讯云OCR": "tencent"}
+            engine_map = {"新野图床+云智OCR（免费）": "xinyew", "腾讯云OCR": "tencent", "视觉模型OCR": "vision_model"}
             self.config_manager.set_config("ocr.engine", engine_map.get(text, "xinyew"))
             self.config_manager.save_config()
             logging.info(f"OCR引擎已自动保存为: {text}")
@@ -1761,7 +1933,7 @@ class MainWindow(QMainWindow):
         try:
             type_map = {"不额外显示": "none", "小弹窗显示": "small_popup", "大弹窗显示": "large_popup", "SMTP发送": "smtp"}
             self.config_manager.set_config("notification.type", type_map.get(text, "none"))
-            self.config_manager.save_config()
+            self.config_manager.save_config(emit_signal=False)  # 避免循环信号
             logging.info(f"通知方式已自动保存为: {text}")
         except Exception as e:
             logging.error(f"保存通知方式配置失败: {e}")

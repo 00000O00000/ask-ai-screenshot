@@ -35,8 +35,8 @@ class Application:
             self.log_manager.setup_logging()
             logging.info("应用程序启动")
             
-            # 加载配置
-            self.config_manager.load_config()
+            # 加载配置（初始化时不发射信号）
+            self.config_manager.load_config(emit_signal=False)
             
             # 初始化各个管理器
             self.screenshot_manager = ScreenshotManager(self.config_manager)
