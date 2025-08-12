@@ -225,11 +225,12 @@ class ConfigManager(QObject):
             return False
     
     def import_config(self, file_path: str) -> bool:
-        """导入配置文件"""
+        """导入配置文件（直接覆盖原有配置）"""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 imported_config = json.load(f)
-            self.config = self._merge_config(self._get_default_config(), imported_config)
+            # 直接覆盖原有配置，不进行合并
+            self.config = imported_config
             self.save_config()
             return True
         except Exception as e:

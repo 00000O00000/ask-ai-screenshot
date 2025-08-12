@@ -2,9 +2,13 @@
 
 一个方便的AI截图分析工具，快速使用AI解释你在屏幕上看到的东西，或让他帮你解题。
 
+exe网盘链接：[https://o-zwz-o.lanzouq.com/iQO8333cn78h](https://o-zwz-o.lanzouq.com/iQO8333cn78h)  密码：52pj
+
+Github 项目地址：[https://github.com/00000O00000/ask-ai-screenshot
+
 软件目前处于测试版，可能存在Bug，若有问题，欢迎前往 Github 提交 issue。
 
-本软件完全使用 Trae + Claude 4 编写，然后由我和 Claude 4 共同进行用户体验优化。
+本软件使用 Trae + Claude 4 编写，然后由我和 Claude 4 共同进行用户体验优化。
 
 ## 功能特点
 
@@ -16,6 +20,13 @@
 
 - 只有多模态模型允许直接提交图片，目前常用的多模态模型为 Claude 3/4 系列，gpt-4o，QvQ-72B。现在常见的Qwen3全系列、Deepseek系列、Kimi-K2都不是多模态模型，需要先OCR后再提交。如果你发现模型报错400，请检查此配置是否正确。
 - 需要联网功能，请使用秘塔API，有赠送额度，且付费很便宜。
+
+## 技术架构
+- 语言：Python
+- GUI：PyQt6
+- 截图：PIL
+- 快捷键：pynput
+- AI引擎：Requests
 
 ## 推荐AI服务商
 

@@ -1604,19 +1604,65 @@ class MainWindow(QMainWindow):
         )
         if file_path:
             if self.config_manager.import_config(file_path):
-                CustomMessageBox.information(self, "成功", "配置文件导入成功")
-                self.setup_hotkey()  # 重新设置快捷键
-                self.load_config_to_ui()  # 导入后需要重新加载UI
+                CustomMessageBox.information(self, "成功", "配置文件导入成功，正在重新初始化界面...")
+                # 完整重新初始化界面
+                self._reinitialize_after_config_import()
             else:
                 CustomMessageBox.critical(self, "错误", "配置文件导入失败")
+    
+    def _reinitialize_after_config_import(self):
+        """配置导入后重新初始化界面"""
+        try:
+            # 1. 重新连接信号（确保配置变更信号正常工作）
+            self.connect_signals()
+            
+            # 2. 重新设置快捷键
+            self.setup_hotkey()
+            
+            # 3. 重新加载UI配置
+            self.load_config_to_ui()
+            
+            # 4. 重新初始化各个管理器的配置
+            self._reinitialize_managers()
+            
+            # 5. 更新主页按钮文本
+            self.update_screenshot_button_text()
+            
+            logging.info("配置导入后界面重新初始化完成")
+            
+        except Exception as e:
+            logging.error(f"配置导入后重新初始化失败: {e}")
+            CustomMessageBox.warning(self, "警告", f"界面重新初始化部分失败: {e}")
+    
+    def _reinitialize_managers(self):
+        """重新初始化各个管理器的配置"""
+        try:
+            # 重新初始化截图管理器
+            if hasattr(self.screenshot_manager, 'setup_hotkey'):
+                self.screenshot_manager.setup_hotkey()
+            
+            # 重新初始化OCR管理器配置
+            if hasattr(self.ocr_manager, 'reload_config'):
+                self.ocr_manager.reload_config()
+            
+            # 重新初始化AI客户端管理器配置
+            if hasattr(self.ai_client_manager, 'reload_config'):
+                self.ai_client_manager.reload_config()
+            
+            # 重新初始化邮件管理器配置
+            if hasattr(self.email_manager, 'reload_config'):
+                self.email_manager.reload_config()
+                
+        except Exception as e:
+            logging.error(f"重新初始化管理器失败: {e}")
     
     def reset_config(self):
         """重置配置"""
         if CustomMessageBox.question(self, "确认", "确定要重置为默认配置吗？这将清除所有自定义设置。"):
             if self.config_manager.reset_config():
-                CustomMessageBox.information(self, "成功", "配置已重置为默认值")
-                self.setup_hotkey()  # 重新设置快捷键
-                self.load_config_to_ui()  # 重置后需要重新加载UI
+                CustomMessageBox.information(self, "成功", "配置已重置为默认值，正在重新初始化界面...")
+                # 完整重新初始化界面
+                self._reinitialize_after_config_import()
             else:
                 CustomMessageBox.critical(self, "错误", "重置配置失败")
     
