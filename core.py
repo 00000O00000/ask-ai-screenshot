@@ -1,245 +1,125 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI截图分析 - 核心功能模块
-包含截图、OCR、AI客户端、邮件管理等功能
+AI截图分析核心功能模块
+包含截图、OCR、AI客户端等核心功能
 """
 
+import os
 import io
+import base64
 import json
 import logging
 import smtplib
 import time
 import hashlib
 import hmac
-import base64
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
-
 import requests
-from PIL import Image
+from PIL import Image, ImageGrab
+from PyQt6.QtCore import QObject, pyqtSignal, QThread, QTimer
 from pynput import keyboard
-from PyQt6.QtCore import QObject, pyqtSignal, QThread
-from PyQt6.QtWidgets import QApplication
 
-# 导入高级截图功能
 from screenshot_overlay import AdvancedScreenshotManager
 
 
 class ScreenshotManager(QObject):
-    """截图管理器 - 重写版本，提供流畅的截图体验"""
+    """截图管理器"""
     
     screenshot_taken = pyqtSignal(object)  # 截图完成信号
-    screenshot_failed = pyqtSignal(str)  # 截图失败信号
-    hotkey_conflict = pyqtSignal(str)  # 快捷键冲突信号
-    screenshot_cancelled = pyqtSignal()  # 截图取消信号
+    screenshot_failed = pyqtSignal(str)    # 截图失败信号
+    screenshot_cancelled = pyqtSignal()    # 截图取消信号
+    hotkey_triggered = pyqtSignal()        # 快捷键触发信号
     
     def __init__(self, config_manager):
         super().__init__()
         self.config_manager = config_manager
-        self.listener = None
-        self.is_capturing = False
-        self.current_hotkey = None
-        
-        # 初始化高级截图管理器
         self.advanced_manager = AdvancedScreenshotManager(config_manager)
-        self._setup_advanced_connections()
+        self.hotkey_listener = None
         
-        # 只使用高级截图模式
+        # 连接快捷键信号到截图方法
+        self.hotkey_triggered.connect(self.start_screenshot)
         
-    def _setup_advanced_connections(self):
-        """设置高级截图管理器的信号连接"""
-        if hasattr(self.advanced_manager, 'overlay'):
-            # 连接信号会在overlay创建时进行
-            pass
-        
-    def setup_hotkey(self) -> bool:
+        # 连接高级截图管理器信号
+        self.advanced_manager.overlay = None  # 初始化overlay属性
+        # 注意：信号连接需要在overlay创建后进行
+    
+    def setup_hotkey(self):
         """设置全局快捷键"""
         try:
-            hotkey_str = self.config_manager.get_config("hotkey.screenshot")
-            if not hotkey_str or hotkey_str.strip() == "":
-                hotkey_str = "alt+shift+d"
+            if self.hotkey_listener:
+                self.hotkey_listener.stop()
             
-            # 停止之前的监听器
-            if self.listener:
-                self.listener.stop()
+            # 使用固定的快捷键 Alt+Shift+D
+            hotkey_combination = {keyboard.Key.alt, keyboard.Key.shift, keyboard.KeyCode.from_char('d')}
             
-            # 验证快捷键格式
-            if not self._validate_hotkey(hotkey_str):
-                logging.error(f"无效的快捷键格式: {hotkey_str}")
-                return False
+            def on_hotkey():
+                # 使用信号来避免在快捷键回调中直接调用UI操作
+                self.hotkey_triggered.emit()
             
-            # 创建新的监听器
-            # 转换快捷键格式为pynput格式
-            pynput_hotkey = self._convert_to_pynput_format(hotkey_str)
-            self.listener = keyboard.GlobalHotKeys({
-                pynput_hotkey: self._on_hotkey_pressed
+            self.hotkey_listener = keyboard.GlobalHotKeys({
+                '<alt>+<shift>+d': on_hotkey
             })
+            self.hotkey_listener.start()
             
-            self.listener.start()
-            self.current_hotkey = hotkey_str
-            logging.info(f"快捷键设置成功: {hotkey_str}")
-            return True
+            logging.info("全局快捷键设置成功: Alt+Shift+D")
             
         except Exception as e:
-            logging.error(f"设置快捷键失败: {e}")
-            self.hotkey_conflict.emit(str(e))
-            return False
-    
-    def _validate_hotkey(self, hotkey_str: str) -> bool:
-        """验证快捷键格式"""
-        try:
-            if not hotkey_str or hotkey_str.strip() == "":
-                return False
-            
-            # 检查基本格式
-            parts = hotkey_str.lower().split('+')
-            if len(parts) < 1:
-                return False
-            
-            # 验证修饰键和主键
-            valid_modifiers = {'ctrl', 'alt', 'shift', 'cmd', 'super'}
-            valid_keys = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 
-                         'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-                         'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12',
-                         'space', 'enter', 'tab', 'esc', 'escape'}
-            
-            for part in parts:
-                part = part.strip()
-                if not part:
-                    return False
-                # 最后一个部分可以是主键，其他必须是修饰键
-                if part == parts[-1]:
-                    if part not in valid_modifiers and part not in valid_keys:
-                        return False
-                else:
-                    if part not in valid_modifiers:
-                        return False
-            
-            return True
-        except Exception:
-            return False
-    
-    def _convert_to_pynput_format(self, hotkey_str: str) -> str:
-        """转换快捷键格式为pynput格式"""
-        try:
-            parts = hotkey_str.lower().split('+')
-            converted_parts = []
-            
-            for part in parts:
-                part = part.strip()
-                # 转换修饰键
-                if part == 'ctrl':
-                    converted_parts.append('<ctrl>')
-                elif part == 'alt':
-                    converted_parts.append('<alt>')
-                elif part == 'shift':
-                    converted_parts.append('<shift>')
-                elif part == 'cmd' or part == 'super':
-                    converted_parts.append('<cmd>')
-                else:
-                    # 普通按键
-                    converted_parts.append(part)
-            
-            return '+'.join(converted_parts)
-        except Exception:
-            return hotkey_str
-    
-    def _on_hotkey_pressed(self):
-        """快捷键按下回调"""
-        if not self.is_capturing:
-            # 使用QTimer延迟执行，避免阻塞快捷键线程
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(50, self.start_screenshot)
+            logging.error(f"设置全局快捷键失败: {e}")
     
     def start_screenshot(self):
         """开始截图"""
         try:
-            self.is_capturing = True
+            # 先断开之前的连接（如果存在）
+            if self.advanced_manager.overlay:
+                try:
+                    self.advanced_manager.overlay.screenshot_confirmed.disconnect()
+                    self.advanced_manager.overlay.screenshot_cancelled.disconnect()
+                except:
+                    pass
             
-            # 只使用高级截图模式
-            self._start_advanced_screenshot()
-                
-        except Exception as e:
-            logging.error(f"截图失败: {e}")
-            self.screenshot_failed.emit(str(e))
-            self.is_capturing = False
-    
-    def _start_advanced_screenshot(self):
-        """启动高级截图模式"""
-        try:
-            # 启动高级截图
+            # 启动截图
             self.advanced_manager.start_screenshot()
             
-            # 连接信号
+            # 连接信号（在overlay创建后）
             if self.advanced_manager.overlay:
-                self.advanced_manager.overlay.screenshot_confirmed.connect(self._on_advanced_screenshot_confirmed)
-                self.advanced_manager.overlay.screenshot_cancelled.connect(self._on_advanced_screenshot_cancelled)
+                self.advanced_manager.overlay.screenshot_confirmed.connect(self.on_screenshot_confirmed)
+                self.advanced_manager.overlay.screenshot_cancelled.connect(self.on_screenshot_cancelled)
+                logging.info("截图信号连接成功")
             else:
-                logging.error("高级截图覆盖层创建失败")
-                self.is_capturing = False
+                logging.error("截图overlay创建失败")
+                self.screenshot_failed.emit("截图overlay创建失败")
                 
         except Exception as e:
-            logging.error(f"启动高级截图失败: {e}")
-            self.is_capturing = False
+            logging.error(f"启动截图失败: {e}")
+            self.screenshot_failed.emit(str(e))
     
-
-    
-    def _on_advanced_screenshot_confirmed(self, screenshot):
-        """高级截图确认回调"""
-        try:
-            self.screenshot_taken.emit(screenshot)
-            logging.info("高级截图已确认")
-        except Exception as e:
-            logging.error(f"处理高级截图确认时出错: {e}")
-        finally:
-            self.is_capturing = False
-    
-    def _on_advanced_screenshot_cancelled(self):
-        """高级截图取消回调"""
-        try:
-            self.screenshot_cancelled.emit()
-            logging.info("高级截图已取消")
-        except Exception as e:
-            logging.error(f"处理高级截图取消时出错: {e}")
-        finally:
-            self.is_capturing = False
-    
-
-    
-    def screenshot_from_clipboard(self) -> Optional[Image.Image]:
+    def screenshot_from_clipboard(self):
         """从剪贴板获取图片"""
         try:
-            clipboard = QApplication.clipboard()
-            pixmap = clipboard.pixmap()
-            
-            if not pixmap.isNull():
-                # 将QPixmap转换为PIL Image
-                buffer = io.BytesIO()
-                pixmap.save(buffer, "PNG")
-                buffer.seek(0)
-                image = Image.open(buffer)
-                logging.info("从剪贴板获取图片成功")
+            image = ImageGrab.grabclipboard()
+            if image and isinstance(image, Image.Image):
                 return image
-            else:
-                logging.warning("剪贴板中没有图片")
-                return None
-                
+            return None
         except Exception as e:
             logging.error(f"从剪贴板获取图片失败: {e}")
             return None
     
+    def on_screenshot_confirmed(self, image):
+        """截图确认处理"""
+        self.screenshot_taken.emit(image)
+    
+    def on_screenshot_cancelled(self):
+        """截图取消处理"""
+        self.screenshot_cancelled.emit()
+    
     def cleanup(self):
         """清理资源"""
-        if self.listener:
-            self.listener.stop()
-            self.listener = None
-            
-        # 清理高级截图管理器
-        if hasattr(self, 'advanced_manager'):
-            self.advanced_manager.cleanup()
+        if self.hotkey_listener:
+            self.hotkey_listener.stop()
 
 
 class OCRManager(QObject):
@@ -270,8 +150,8 @@ class OCRManager(QObject):
         except Exception as e:
             error_msg = f"OCR识别失败: {e}"
             logging.error(error_msg)
-            self.ocr_failed.emit(error_msg)
-            return ""
+            # 在WorkerThread中不发射信号，直接抛出异常
+            raise Exception(error_msg)
     
     def _tencent_ocr(self, image: Image.Image) -> str:
         """腾讯云OCR"""
@@ -310,14 +190,13 @@ class OCRManager(QObject):
             headers["Authorization"] = signature
             
             # 发送请求
-            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            response = requests.post(url, headers=headers, json=payload, timeout=10)
             response.raise_for_status()
             
             result = response.json()
             if "Response" in result and "TextDetections" in result["Response"]:
                 texts = [item["DetectedText"] for item in result["Response"]["TextDetections"]]
                 ocr_text = "\n".join(texts)
-                self.ocr_completed.emit(ocr_text)
                 return ocr_text
             else:
                 raise ValueError("OCR响应格式错误")
@@ -369,7 +248,7 @@ class OCRManager(QObject):
             buffer.seek(0)
             
             files = {'file': ('image.png', buffer, 'image/png')}
-            upload_response = requests.post(upload_url, files=files, timeout=30)
+            upload_response = requests.post(upload_url, files=files, timeout=10)
             upload_response.raise_for_status()
             
             upload_result = upload_response.json()
@@ -385,7 +264,7 @@ class OCRManager(QObject):
             ocr_response = requests.get(
                 ocr_url,
                 params={"url": image_url, "type": "json"},
-                timeout=30
+                timeout=10
             )
             ocr_response.raise_for_status()
             
@@ -400,7 +279,6 @@ class OCRManager(QObject):
                 text_lines = [item.get("words", "") for item in words_result]
                 ocr_text = "\n".join(text_lines)
             
-            self.ocr_completed.emit(ocr_text)
             return ocr_text
             
         except Exception as e:
@@ -409,64 +287,57 @@ class OCRManager(QObject):
     def _vision_model_ocr(self, image: Image.Image) -> str:
         """视觉模型OCR"""
         try:
-            # 获取视觉模型配置
-            vision_config = self.config_manager.get_config("ocr.vision_model")
-            if not vision_config:
-                raise Exception("视觉模型配置不存在")
+            # 获取OCR专用视觉模型配置
+            vision_model = self.config_manager.get_config("ocr.vision_model")
             
-            api_key = vision_config.get("api_key", "")
-            if not api_key:
-                raise Exception("视觉模型API密钥未配置")
+            if not vision_model:
+                raise ValueError("未配置OCR专用视觉模型")
+            
+            # 检查必要配置
+            if not vision_model.get('model_id') or not vision_model.get('api_endpoint') or not vision_model.get('api_key'):
+                raise ValueError("OCR视觉模型配置不完整")
             
             # 将图片转换为base64
-            import io
-            import base64
-            
             buffer = io.BytesIO()
             image.save(buffer, format='PNG')
             image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
             
-            # 构建请求数据
+            # 获取OCR提示词
+            ocr_prompt = vision_model.get('prompt', '请识别图片中的文字内容，并格式化后给我。只返回识别到的文字，不要添加任何解释或说明。')
+            
+            # 构建请求
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": ocr_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_base64}"
+                            }
+                        }
+                    ]
+                }
+            ]
+            
+            request_data = {
+                "model": vision_model.get('model_id', ''),
+                "messages": messages,
+                "max_tokens": vision_model.get('max_tokens', 1000),
+                "temperature": vision_model.get('temperature', 0.1)
+            }
+            
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}"
+                "Authorization": f"Bearer {vision_model.get('api_key', '')}"
             }
             
-            prompt = vision_config.get("prompt", "请识别图片中的文字内容，并格式化后给我。只返回识别到的文字，不要添加任何解释或说明。")
-            data = {
-                "model": vision_config.get("model_id", ""),
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": prompt
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{image_base64}"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                "temperature": vision_config.get("temperature", 0.3)
-            }
-            
-            # 只有当max_tokens大于0时才添加此参数
-            max_tokens = vision_config.get("max_tokens", 1000)
-            if max_tokens > 0:
-                data["max_tokens"] = max_tokens
-            
-            # 发送请求
-            import requests
             response = requests.post(
-                vision_config.get("api_endpoint", "") + "/chat/completions",
+                vision_model.get('api_endpoint', ''),
                 headers=headers,
-                json=data,
-                timeout=30
+                json=request_data,
+                timeout=15
             )
             
             if response.status_code != 200:
@@ -474,327 +345,243 @@ class OCRManager(QObject):
             
             result = response.json()
             
-            if "choices" not in result or not result["choices"]:
+            if 'choices' not in result or not result['choices']:
                 raise Exception("API响应格式错误")
             
-            ocr_text = result["choices"][0]["message"]["content"].strip()
-            
-            if not ocr_text:
-                ocr_text = "未识别到文字内容"
-            
-            self.ocr_completed.emit(ocr_text)
+            ocr_text = result['choices'][0]['message']['content'].strip()
             return ocr_text
             
         except Exception as e:
-            raise Exception(f"视觉模型OCR识别失败: {e}")
+            raise Exception(f"视觉模型OCR失败: {e}")
 
 
 class AIRequestThread(QThread):
-    """AI请求工作线程"""
+    """AI请求线程"""
     
     response_completed = pyqtSignal(str)  # 响应完成信号
-    request_failed = pyqtSignal(str)  # 请求失败信号
-    streaming_response = pyqtSignal(str, str)  # 流式响应信号 (content_type, content)
-    reasoning_content = pyqtSignal(str)  # 推理内容信号
+    request_failed = pyqtSignal(str)      # 请求失败信号
+    streaming_response = pyqtSignal(str, str)  # 流式响应信号 (类型, 内容)
+    reasoning_content = pyqtSignal(str)   # 推理内容信号
     
-    def __init__(self, model_config, request_data):
+    def __init__(self, ai_config, prompt, image=None, ocr_text=None):
         super().__init__()
-        self.model_config = model_config
-        self.request_data = request_data
+        self.ai_config = ai_config
+        self.prompt = prompt
+        self.image = image
+        self.ocr_text = ocr_text
         self.should_stop = False
-        self.accumulated_content = ""
-        self.accumulated_reasoning = ""
+    
+    def stop_request(self):
+        """停止请求"""
+        self.should_stop = True
     
     def run(self):
         """执行AI请求"""
         try:
-            self._send_streaming_request()
+            response = self._send_ai_request()
+            if not self.should_stop:
+                self.response_completed.emit(response)
         except Exception as e:
             if not self.should_stop:
-                error_msg = f"AI请求失败: {e}"
-                logging.error(error_msg)
-                self.request_failed.emit(error_msg)
+                self.request_failed.emit(str(e))
     
-    def stop(self):
-        """停止请求"""
-        self.should_stop = True
-        self.quit()
-        self.wait()
-    
-
-    
-    def _send_streaming_request(self):
-        """发送流式请求"""
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.model_config['api_key']}"
-        }
+    def _send_ai_request(self):
+        """发送AI请求"""
+        # 构建请求消息
+        messages = []
         
-        # 添加流式请求参数
-        stream_request_data = self.request_data.copy()
-        stream_request_data["stream"] = True
-        
-        try:
-            response = requests.post(
-                self.model_config["api_endpoint"],
-                headers=headers,
-                json=stream_request_data,
-                timeout=200,
-                stream=True
-            )
+        if self.image and self.ai_config.get('vision_support', False):
+            # 支持视觉的模型
+            # 将图片转换为base64
+            img_byte_arr = io.BytesIO()
+            self.image.save(img_byte_arr, format='PNG')
+            img_base64 = base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
             
-            if response.status_code != 200:
-                error_detail = f"HTTP {response.status_code}: {response.text}"
-                logging.error(f"API请求失败 - {error_detail}")
-                raise Exception(f"API请求失败: {error_detail}")
-            
-            response.raise_for_status()
-            
-            # 处理流式响应
-            for line in response.iter_lines():
-                if self.should_stop:
-                    break
-                    
-                if line:
-                    line_text = line.decode('utf-8')
-                    if line_text.startswith('data: '):
-                        data_text = line_text[6:]  # 移除 'data: ' 前缀
-                        
-                        if data_text.strip() == '[DONE]':
-                            break
-                            
-                        try:
-                            data = json.loads(data_text)
-                            if 'choices' in data and len(data['choices']) > 0:
-                                choice = data['choices'][0]
-                                if 'delta' in choice:
-                                    delta = choice['delta']
-                                    
-                                    # 处理推理内容（推理模型特有）
-                                    if 'reasoning_content' in delta and delta['reasoning_content']:
-                                        reasoning_content = delta['reasoning_content']
-                                        self.accumulated_reasoning += reasoning_content
-                                        self.reasoning_content.emit(reasoning_content)
-                                    
-                                    # 处理普通内容
-                                    if 'content' in delta and delta['content']:
-                                        content = delta['content']
-                                        self._process_streaming_content(content)
-                        except json.JSONDecodeError:
-                            continue
-            
-            # 发送完成信号
-            if not self.should_stop:
-                final_content = self.accumulated_content
-                if self.accumulated_reasoning:
-                    final_content = f"**思考内容：**\n{self.accumulated_reasoning}\n\n**回复内容：**\n{self.accumulated_content}"
-                self.response_completed.emit(final_content)
-                
-        except Exception as e:
-            # 如果流式请求失败，尝试普通请求
-            logging.warning(f"流式请求失败，尝试普通请求: {e}")
-            self._send_normal_request_fallback()
-    
-    def _process_streaming_content(self, content):
-        """处理流式内容"""
-        # 检测是否是推理内容（支持多种格式）
-        is_reasoning = False
-        
-        # 检查常见的推理标签格式
-        reasoning_indicators = [
-            '<thinking>', '</thinking>',  # 标准thinking标签
-            '<thought>', '</thought>',    # thought标签
-            '思考：', '推理：', '分析：',     # 中文推理标识
-            'Thinking:', 'Reasoning:', 'Analysis:'  # 英文推理标识
-        ]
-        
-        for indicator in reasoning_indicators:
-            if indicator in content:
-                is_reasoning = True
-                break
-        
-        # 对于Thinking模型，如果内容看起来像推理过程，也归类为推理内容
-        if not is_reasoning and hasattr(self, 'model_config'):
-            model_name = self.model_config.get('name', '').lower()
-            if 'thinking' in model_name:
-                # 检查是否包含推理特征（如步骤、分析等）
-                reasoning_patterns = ['步骤', '首先', '然后', '因此', '所以', '分析', '考虑']
-                for pattern in reasoning_patterns:
-                    if pattern in content:
-                        is_reasoning = True
-                        break
-        
-        if is_reasoning:
-            self.accumulated_reasoning += content
-            self.reasoning_content.emit(content)
+            messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": self.prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{img_base64}"
+                        }
+                    }
+                ]
+            })
         else:
-            self.accumulated_content += content
-            self.streaming_response.emit("content", content)
-    
-    def _send_normal_request_fallback(self):
-        """发送普通请求（作为流式请求的备用方案）"""
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.model_config['api_key']}"
+            # 文本模型或包含OCR文本
+            content = self.prompt
+            if self.ocr_text:
+                content += f"\n\n以下是图片中识别的文字内容：\n{self.ocr_text}"
+            
+            messages.append({
+                "role": "user",
+                "content": content
+            })
+        
+        # 检查是否支持流式响应
+        enable_streaming = self.ai_config.get('enable_streaming', False)
+        
+        # 构建请求数据
+        request_data = {
+            "model": self.ai_config.get('model_id', ''),
+            "messages": messages,
+            "max_tokens": self.ai_config.get('max_tokens', 4000),
+            "temperature": self.ai_config.get('temperature', 0.3),
+            "stream": enable_streaming
         }
         
+        # 发送请求
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.ai_config.get('api_key', '')}"
+        }
+        
+        if enable_streaming:
+            return self._handle_streaming_response(headers, request_data)
+        else:
+            return self._handle_normal_response(headers, request_data)
+    
+    def _handle_normal_response(self, headers, request_data):
+        """处理普通响应"""
         response = requests.post(
-            self.model_config["api_endpoint"],
+            self.ai_config.get('api_endpoint', ''),
             headers=headers,
-            json=self.request_data,
-            timeout=200
+            json=request_data,
+            timeout=60
         )
         
         if response.status_code != 200:
-            error_detail = f"HTTP {response.status_code}: {response.text}"
-            logging.error(f"API请求失败 - {error_detail}")
-            raise Exception(f"API请求失败: {error_detail}")
-        
-        response.raise_for_status()
+            raise Exception(f"API请求失败: {response.status_code} - {response.text}")
         
         result = response.json()
-        if 'choices' in result and len(result['choices']) > 0:
-            content = result['choices'][0]['message']['content']
-            if not self.should_stop:
-                self.response_completed.emit(content)
-        else:
-            raise ValueError("响应格式错误")
+        
+        if 'choices' not in result or not result['choices']:
+            raise Exception("API响应格式错误")
+        
+        content = result['choices'][0]['message']['content']
+        
+        # 尝试解析推理内容和回复内容
+        reasoning_content, response_content = self._parse_reasoning_and_response(content)
+        
+        if reasoning_content:
+            self.reasoning_content.emit(reasoning_content)
+        
+        return response_content or content
+    
+    def _handle_streaming_response(self, headers, request_data):
+        """处理流式响应"""
+        response = requests.post(
+            self.ai_config.get('api_endpoint', ''),
+            headers=headers,
+            json=request_data,
+            timeout=60,
+            stream=True
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"API请求失败: {response.status_code} - {response.text}")
+        
+        full_content = ""
+        
+        for line in response.iter_lines():
+            if self.should_stop:
+                break
+                
+            if line:
+                line = line.decode('utf-8')
+                if line.startswith('data: '):
+                    data = line[6:]
+                    if data == '[DONE]':
+                        break
+                    
+                    try:
+                        chunk = json.loads(data)
+                        if 'choices' in chunk and chunk['choices']:
+                            delta = chunk['choices'][0].get('delta', {})
+                            
+                            # 处理推理内容（只依据API返回的reasoning_content字段）
+                            if 'reasoning_content' in delta and delta['reasoning_content']:
+                                reasoning_content = delta['reasoning_content']
+                                self.reasoning_content.emit(reasoning_content)
+                            
+                            # 处理普通响应内容
+                            if 'content' in delta and delta['content']:
+                                content = delta['content']
+                                full_content += content
+                                self.streaming_response.emit("content", content)
+                                
+                    except json.JSONDecodeError:
+                        continue
+        
+        return full_content
+    
+    def _parse_reasoning_and_response(self, content):
+        """解析推理内容和回复内容"""
+        reasoning_content = ""
+        response_content = content
+        
+        # 查找 <thinking> 标签
+        import re
+        thinking_pattern = r'<thinking>(.*?)</thinking>'
+        matches = re.findall(thinking_pattern, content, re.DOTALL)
+        
+        if matches:
+            reasoning_content = '\n'.join(matches).strip()
+            # 移除推理内容，保留回复内容
+            response_content = re.sub(thinking_pattern, '', content, flags=re.DOTALL).strip()
+        
+        return reasoning_content, response_content
 
 
 class AIClientManager(QObject):
     """AI客户端管理器"""
     
     response_completed = pyqtSignal(str)  # 响应完成信号
-    request_failed = pyqtSignal(str)  # 请求失败信号
-    streaming_response = pyqtSignal(str, str)  # 流式响应信号 (content_type, content)
-    reasoning_content = pyqtSignal(str)  # 推理内容信号
+    request_failed = pyqtSignal(str)      # 请求失败信号
+    streaming_response = pyqtSignal(str, str)  # 流式响应信号
+    reasoning_content = pyqtSignal(str)   # 推理内容信号
     
     def __init__(self, config_manager):
         super().__init__()
         self.config_manager = config_manager
         self.current_thread = None
     
-    def send_request(self, model_id: str, prompt: str, image: Optional[Image.Image] = None, ocr_text: str = ""):
+    def send_request(self, model_name, prompt, image=None, ocr_text=None):
         """发送AI请求"""
         try:
+            # 获取AI配置
+            ai_config = self.config_manager.get_config("ai_model")
+            if not ai_config:
+                self.request_failed.emit("AI模型配置不存在")
+                return
+            
             # 停止之前的请求
-            if self.current_thread and self.current_thread.isRunning():
-                self.current_thread.stop()
+            self.stop_request()
             
-            # 获取模型配置
-            model_config = self.config_manager.get_config(f"ai_models.{model_id}")
-            if not model_config:
-                raise ValueError(f"模型配置不存在: {model_id}")
-            
-            # 构建消息
-            messages = self._build_messages(prompt, image, ocr_text, model_config)
-            
-            # 构建请求数据
-            request_data = {
-                "model": model_config["model_id"],
-                "messages": messages,
-                "temperature": model_config.get("temperature", 0.3)
-            }
-            
-            if model_config.get("max_tokens", 0) > 0:
-                request_data["max_tokens"] = model_config["max_tokens"]
-            
-            # 创建并启动请求线程
-            self.current_thread = AIRequestThread(model_config, request_data)
-            
-            # 连接信号
-            self.current_thread.response_completed.connect(self.response_completed.emit)
-            self.current_thread.request_failed.connect(self.request_failed.emit)
-            self.current_thread.streaming_response.connect(self.streaming_response.emit)
-            self.current_thread.reasoning_content.connect(self.reasoning_content.emit)
+            # 创建新的请求线程
+            self.current_thread = AIRequestThread(ai_config, prompt, image, ocr_text)
+            self.current_thread.response_completed.connect(self.response_completed)
+            self.current_thread.request_failed.connect(self.request_failed)
+            self.current_thread.streaming_response.connect(self.streaming_response)
+            self.current_thread.reasoning_content.connect(self.reasoning_content)
             
             # 启动线程
             self.current_thread.start()
-                
+            
         except Exception as e:
-            error_msg = f"AI请求失败: {e}"
-            logging.error(error_msg)
-            logging.error(f"模型配置: {model_config if 'model_config' in locals() else 'N/A'}")
-            logging.error(f"请求数据: {request_data if 'request_data' in locals() else 'N/A'}")
-            self.request_failed.emit(error_msg)
-    
-    def _build_messages(self, prompt: str, image: Optional[Image.Image], ocr_text: str, model_config: dict) -> list:
-        """构建消息列表"""
-        messages = []
-        
-        # 构建用户消息
-        if model_config.get("vision_support", False) and image:
-            # 支持视觉的模型
-            content = [{"type": "text", "text": prompt}]
-            
-            if ocr_text:
-                content[0]["text"] += f"\n\n图片中的文字内容：\n{ocr_text}"
-            
-            # 将图片转换为base64
-            buffer = io.BytesIO()
-            image.save(buffer, format='PNG')
-            image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-            
-            content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/png;base64,{image_base64}"
-                }
-            })
-            
-            messages.append({"role": "user", "content": content})
-        else:
-            # 不支持视觉的模型，只发送文本
-            text_content = prompt
-            if ocr_text:
-                text_content += f"\n\n图片中的文字内容：\n{ocr_text}"
-            
-            messages.append({"role": "user", "content": text_content})
-        
-        return messages
-    
-
-    
-    def _send_normal_request(self, model_config: dict, request_data: dict):
-        """发送普通请求"""
-        try:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {model_config['api_key']}"
-            }
-            
-            response = requests.post(
-                model_config["api_endpoint"],
-                headers=headers,
-                json=request_data,
-                timeout=200
-            )
-            
-            if response.status_code != 200:
-                error_detail = f"HTTP {response.status_code}: {response.text}"
-                logging.error(f"API请求失败 - {error_detail}")
-                raise Exception(f"API请求失败: {error_detail}")
-            
-            response.raise_for_status()
-            
-            result = response.json()
-            if 'choices' in result and len(result['choices']) > 0:
-                content = result['choices'][0]['message']['content']
-                self.response_completed.emit(content)
-            else:
-                raise ValueError("响应格式错误")
-                
-        except Exception as e:
-            raise Exception(f"普通请求失败: {e}")
+            self.request_failed.emit(str(e))
     
     def stop_request(self):
         """停止当前请求"""
         if self.current_thread and self.current_thread.isRunning():
-            try:
-                self.current_thread.stop()
-            except Exception:
-                pass
-            self.current_thread = None
+            self.current_thread.stop_request()
+            self.current_thread.wait()
+    
+    def cleanup(self):
+        """清理资源"""
+        self.stop_request()
 
 
 class EmailManager(QObject):
@@ -810,6 +597,10 @@ class EmailManager(QObject):
     def send_email(self, subject: str, content: str):
         """发送邮件"""
         try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            
             smtp_config = self.config_manager.get_config("notification.smtp")
             if not smtp_config or not all([
                 smtp_config.get("server"),

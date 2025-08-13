@@ -317,7 +317,7 @@ class ScreenshotOverlay(QWidget):
             text_rect = fm.boundingRect(instruction)
             x = (self.width() - text_rect.width()) // 2
             
-            # 绘制文本背景（简化版，不遮挡选择区域）
+            # 绘制文本背景（不遮挡选择区域）
             bg_rect = QRect(
                 x - 12, y_offset - 6,
                 text_rect.width() + 24, text_rect.height() + 12
@@ -493,9 +493,15 @@ class AdvancedScreenshotManager:
     def start_screenshot(self) -> None:
         """开始截图"""
         try:
-            # 如果已有覆盖层，先关闭
+            # 如果已有覆盖层，先关闭并清理
             if self.overlay:
+                try:
+                    self.overlay.screenshot_confirmed.disconnect()
+                    self.overlay.screenshot_cancelled.disconnect()
+                except:
+                    pass
                 self.overlay.close()
+                self.overlay = None
                 
             # 创建新的覆盖层
             self.overlay = ScreenshotOverlay()
@@ -513,6 +519,9 @@ class AdvancedScreenshotManager:
             
         except Exception as e:
             logging.error(f"启动截图失败: {e}")
+            if self.overlay:
+                self.overlay.close()
+                self.overlay = None
             
     def _on_screenshot_confirmed(self, screenshot):
         """截图确认回调"""

@@ -206,7 +206,7 @@ class MarkdownViewer(QTextEdit):
                 border: 1px solid #e0e0e0;
                 border-radius: 4px;
                 padding: 10px;
-                font-family: 'Microsoft YaHei', Arial, sans-serif;
+                font-family: 'Segoe UI Emoji', 'Microsoft YaHei', 'Noto Color Emoji', 'Apple Color Emoji', Arial, sans-serif;
                 font-size: 14px;
                 line-height: 1.6;
             }
@@ -608,7 +608,7 @@ class LargeNotificationWindow(QDialog):
         self.current_reasoning_content += reasoning
         self._update_display_content()
     
-    def _update_display_content(self):
+    def _update_display_content(self, force_render=False):
         """更新显示内容（使用批量更新优化）"""
         if not hasattr(self, '_update_pending'):
             self._update_pending = False
@@ -617,30 +617,69 @@ class LargeNotificationWindow(QDialog):
             self._update_timer.timeout.connect(self._batch_update_display)
             self._update_timer.setInterval(100)  # 100ms批量更新
         
-        if not self._update_pending:
+        if force_render:
+            # 强制立即渲染
+            self._batch_update_display()
+        elif not self._update_pending:
             self._update_pending = True
             self._update_timer.start()
     
-    def _batch_update_display(self):
+    def _batch_update_display(self, force_markdown=False):
         """批量更新显示内容"""
-        self._update_pending = False
+        if hasattr(self, '_update_pending'):
+            self._update_pending = False
         
         display_content = ""
         
-        if self.current_reasoning_content:
+        if hasattr(self, 'current_reasoning_content') and self.current_reasoning_content:
             display_content += f"<div style='background-color: #f0f8ff; padding: 15px; border-left: 4px solid #4a90e2; margin-bottom: 20px; border-radius: 6px;'>\n"
             display_content += f"<h3 style='color: #4a90e2; margin: 0 0 10px 0; font-family: \"Microsoft YaHei\", sans-serif;'>🤔 思考内容</h3>\n"
-            display_content += f"<div style='font-family: \"Consolas\", \"Monaco\", monospace; font-size: 14px; color: #666; line-height: 1.5;'>{self.current_reasoning_content}</div>\n"
+            display_content += f"<div style='font-family: \"Consolas\", \"Monaco\", monospace; font-size: 14px; color: #666; line-height: 1.6; white-space: pre-wrap;'>{self.current_reasoning_content}</div>\n"
             display_content += f"</div>\n\n"
         
-        if self.current_response_content:
-            display_content += f"<div style='background-color: #f8fff8; padding: 15px; border-left: 4px solid #28a745; border-radius: 6px;'>\n"
-            display_content += f"<h3 style='color: #28a745; margin: 0 0 10px 0; font-family: \"Microsoft YaHei\", sans-serif;'>💬 回复内容</h3>\n"
-            display_content += f"<div style='font-family: \"Microsoft YaHei\", sans-serif; line-height: 1.6;'>{self.current_response_content}</div>\n"
-            display_content += f"</div>"
+        if hasattr(self, 'current_response_content') and self.current_response_content:
+            if force_markdown:
+                # 流式完成后，进行完整的markdown渲染
+                display_content += f"<div style='background-color: #f8fff8; padding: 15px; border-left: 4px solid #28a745; border-radius: 6px;'>\n"
+                display_content += f"<h3 style='color: #28a745; margin: 0 0 10px 0; font-family: \"Microsoft YaHei\", sans-serif;'>💬 回复内容</h3>\n"
+                display_content += f"<div style='font-family: \"Microsoft YaHei\", sans-serif; line-height: 1.6; white-space: pre-wrap;'>{self.current_response_content}</div>\n"
+                display_content += f"</div>"
+            else:
+                # 流式过程中，显示纯文本避免频繁渲染
+                display_content += f"<div style='background-color: #f8fff8; padding: 15px; border-left: 4px solid #28a745; border-radius: 6px;'>\n"
+                display_content += f"<h3 style='color: #28a745; margin: 0 0 10px 0; font-family: \"Microsoft YaHei\", sans-serif;'>💬 回复内容</h3>\n"
+                display_content += f"<div style='font-family: \"Microsoft YaHei\", sans-serif; line-height: 1.6; white-space: pre-wrap;'>{self.current_response_content}</div>\n"
+                display_content += f"</div>"
         
         self.current_text = display_content
-        self.content_viewer.set_markdown(display_content)
+        if force_markdown:
+            # 强制进行markdown渲染
+            self.content_viewer.set_markdown(display_content)
+        else:
+            # 流式过程中使用简单的HTML显示
+            self.content_viewer.setHtml(display_content)
+        
+        # 确保滚动条始终在底部
+        scrollbar = self.content_viewer.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+    
+    def append_response_content(self, content):
+        """追加回复内容（用于流式响应）"""
+        if not hasattr(self, 'current_response_content'):
+            self.current_response_content = ""
+        
+        self.current_response_content += content
+        # 流式过程中不进行markdown渲染，只更新文本
+        self._update_display_content(force_render=False)
+    
+    def append_reasoning_content(self, content):
+        """追加推理内容"""
+        if not hasattr(self, 'current_reasoning_content'):
+            self.current_reasoning_content = ""
+        
+        self.current_reasoning_content += content
+        # 推理内容立即显示
+        self._update_display_content(force_render=False)
     
     def copy_content(self):
         """复制内容到剪贴板"""
@@ -711,6 +750,7 @@ class NotificationWindow:
             
             # 创建新的大通知（用于流式显示），不设置父窗口以确保完全独立
             cls._large_notification = LargeNotificationWindow(initial_message, None)
+            cls._large_notification.setWindowTitle("AI流式响应")
             cls._large_notification.current_reasoning_content = ""
             cls._large_notification.current_response_content = ""
             cls._large_notification.show()
@@ -719,6 +759,24 @@ class NotificationWindow:
             
         except Exception as e:
             logging.error(f"显示流式大通知失败: {e}")
+            return None
+    
+    @classmethod
+    def show_large_notification_reasoning(cls, reasoning_content: str, parent=None):
+        """显示推理内容大通知"""
+        try:
+            # 创建新的推理内容窗口，不关闭现有窗口以支持同时显示
+            reasoning_window = LargeNotificationWindow("", None)
+            reasoning_window.setWindowTitle("AI推理过程")
+            reasoning_window.current_reasoning_content = reasoning_content
+            reasoning_window.current_response_content = ""
+            reasoning_window._batch_update_display()
+            reasoning_window.show()
+            
+            return reasoning_window
+            
+        except Exception as e:
+            logging.error(f"显示推理内容大通知失败: {e}")
             return None
     
 
