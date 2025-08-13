@@ -2,7 +2,11 @@
 
 一个方便的AI截图分析工具，快速使用AI解释你在屏幕上看到的东西，或让他帮你解题。
 
-exe网盘链接：[https://o-zwz-o.lanzouq.com/iQO8333cn78h](https://o-zwz-o.lanzouq.com/iQO8333cn78h)  密码：52pj
+v2.0：移除可能导致问题的前端配置部分，请自行编辑config.toml文件以自定义配置
+
+v2.0：新增：内置原创 Qwen API 逆向，允许开箱即用（使用了一个新账号的token）
+
+exe网盘链接：[https://o-zwz-o.lanzouq.com/b002v8ande](https://o-zwz-o.lanzouq.com/b002v8ande)  密码：52pj
 
 Github 项目地址：[https://github.com/00000O00000/ask-ai-screenshot
 
