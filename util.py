@@ -77,7 +77,7 @@ class ConfigManager(QObject):
             ],
             # OCR配置 - 光学字符识别相关设置
             "ocr": {
-                "engine": "xinyew",  # OCR引擎类型：xinyew(新野OCR)、tencent(腾讯云OCR)、vision_model(AI视觉模型)
+                "engine": "vision_model",  # OCR引擎类型：xinyew(新野OCR)、tencent(腾讯云OCR)、vision_model(AI视觉模型)
                 "type": "ocr_then_text",  # 处理类型：ocr_then_text(先OCR再分析)、direct_vision(直接视觉分析)
                 # 腾讯云OCR配置
                 "tencent": {
