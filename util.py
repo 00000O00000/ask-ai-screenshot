@@ -217,7 +217,7 @@ name = "{ai_model_name}"
 # ◆ 模型标识符，用于API调用
 model_id = "{ai_model_id}"
 
-# ◆ API端点地址，支持本地Flask服务或远程API
+# ◆ API端点地址，支持内置Qwen API服务或远程第三方API
 # 内置服务：http://127.0.0.1:58888/v1/chat/completions
 # 第三方服务示例：https://api.openai.com/v1/chat/completions
 # 当您填写了第三方服务时，内置的服务将不会运行

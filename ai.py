@@ -9,14 +9,22 @@ import os
 import warnings
 import base64
 import hashlib
-from io import BytesIO
+import random
 from urllib.parse import urlparse
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 import oss2
 
 # ==================== 配置区域 ====================
-QWEN_AUTH_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjlkYzNkNGI0LWE2ZGYtNGNjMi1iM2U4LWQwM2MzZGRhOWJlYSIsImxhc3RfcGFzc3dvcmRfY2hhbmdlIjoxNzU1MTM1NzQwLCJleHAiOjE3NTc3Mjc3ODV9.BbLfc-uPkiuXg5EtGQ8PBk9OEYAeTGunr043feyPxm4"
+# 负载均衡token池
+QWEN_AUTH_TOKENS = [
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjlkYzNkNGI0LWE2ZGYtNGNjMi1iM2U4LWQwM2MzZGRhOWJlYSIsImxhc3RfcGFzc3dvcmRfY2hhbmdlIjoxNzU1MTM1NzQwLCJleHAiOjE3NTc3Mjc3ODV9.BbLfc-uPkiuXg5EtGQ8PBk9OEYAeTGunr043feyPxm4",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjhjMTI2NjU0LTNiN2ItNDhhYi1hMDlkLTdjYWRhYmIzMWNiOCIsImxhc3RfcGFzc3dvcmRfY2hhbmdlIjoxNzU1MTQwOTgyLCJleHAiOjE3NTc3MzMwMTd9.grDFRe5JEg_q2NAy7rFIRQXhph3T8VmUpkgeJMC4nBY",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjNlNWYzZTQ4LWNmMGYtNDE0Yy04Yzc0LWRlZjA1YWUxNzZhMyIsImxhc3RfcGFzc3dvcmRfY2hhbmdlIjoxNzU1MTQxMTA4LCJleHAiOjE3NTc3MzMxMzJ9.e2zfnKgLHXPeEYr4fHz9wP_IF4UeAUqXJZh4bxX9XdQ"
+]
+
+# 随机选择一个token
+QWEN_AUTH_TOKEN = random.choice(QWEN_AUTH_TOKENS)
 PORT = 58888  # 服务端绑定的端口
 DEBUG_STATUS = False  # 是否输出debug信息
 # =================================================
@@ -621,6 +629,11 @@ def health_check():
     return jsonify({"status": "healthy"}), 200
 
 if __name__ == '__main__':
+    # 显示选择的token信息（只显示前8位和后8位，保护隐私）
+    token_index = QWEN_AUTH_TOKENS.index(QWEN_AUTH_TOKEN) + 1
+    token_preview = f"{QWEN_AUTH_TOKEN[:8]}...{QWEN_AUTH_TOKEN[-8:]}"
+    
     print(f"正在启动简化版服务器于端口 {PORT}...")
     print(f"Debug模式: {'开启' if DEBUG_STATUS else '关闭'}")
+    print(f"负载均衡: 使用Token #{token_index}/{len(QWEN_AUTH_TOKENS)} ({token_preview})")
     app.run(host='0.0.0.0', port=PORT, debug=False)

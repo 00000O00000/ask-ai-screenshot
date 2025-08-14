@@ -393,8 +393,8 @@ class MainWindow(QMainWindow):
         padding: 8px;
         }
         </style>
-        <h2 style="color: #a8d8a8;">AI截图分析 v2.1</h2>
-        <p>一个方便的AI截图分析工具，快速使用AI识别屏幕上看到的东西，然后让他帮你解释、答题、翻译。</p>
+        <h2 style="color: #a8d8a8;">AI截图分析 v2.2</h2>
+        <p>一个方便的AI截图分析工具，快速识别屏幕上看到的东西，然后让他帮你解释、答题、翻译。</p>
         <p>软件目前处于测试版，可能存在Bug，若有问题，欢迎前往 Github 提交 issue。</p>
         <h2>功能特点</h2>
         <ul>
@@ -404,6 +404,12 @@ class MainWindow(QMainWindow):
         <li><strong>高度自由</strong>：可自行配置使用的AI接口、OCR接口、提示词</li>
         </ul>
         <h2>更新日志</h2>
+        <h3>v2.2</h3>
+        <ul>
+        <li>修复：SMTP邮件通知功能异常</li>
+        <li>修复：额外通知设置为小窗时，会同时弹出大窗口</li>
+        <li>新增：Qwen API逆向新增多账号负载均衡，确保不会引发并发异常导致被检测封禁</li>
+        </ul>
         <h3>v2.1</h3>
         <ul>
         <li>Qwen API 上传图片功能，可使用这个AI上传图片进行OCR</li>
@@ -807,13 +813,17 @@ class MainWindow(QMainWindow):
     
     def on_ai_reasoning_content(self, reasoning_content):
         """AI推理内容处理"""
-        # 如果没有大窗口，创建一个
-        if not hasattr(self, 'large_window') or not self.large_window:
-            self.large_window = self.show_large_window("AI正在分析...")
+        # 检查通知配置，只有在large_popup时才创建大窗口
+        notification_type = self.config_manager.get_config("notification.type") or "small_popup"
         
-        # 添加推理内容到大窗口
-        if self.large_window and hasattr(self.large_window, 'append_reasoning_content'):
-            self.large_window.append_reasoning_content(reasoning_content)
+        if notification_type == "large_popup":
+            # 如果没有大窗口，创建一个
+            if not hasattr(self, 'large_window') or not self.large_window:
+                self.large_window = self.show_large_window("AI正在分析...")
+            
+            # 添加推理内容到大窗口
+            if self.large_window and hasattr(self.large_window, 'append_reasoning_content'):
+                self.large_window.append_reasoning_content(reasoning_content)
     
     def on_ai_streaming_response(self, content_type, content):
         """AI流式响应处理"""
@@ -821,13 +831,17 @@ class MainWindow(QMainWindow):
             # 更新主窗口输出
             self.output_text.append_text(content)
             
-            # 如果没有大窗口，创建一个
-            if not hasattr(self, 'large_window') or not self.large_window:
-                self.large_window = self.show_large_window("AI正在分析...")
+            # 检查通知配置，只有在large_popup时才创建大窗口
+            notification_type = self.config_manager.get_config("notification.type") or "small_popup"
             
-            # 添加响应内容到大窗口
-            if self.large_window and hasattr(self.large_window, 'append_response_content'):
-                self.large_window.append_response_content(content)
+            if notification_type == "large_popup":
+                # 如果没有大窗口，创建一个
+                if not hasattr(self, 'large_window') or not self.large_window:
+                    self.large_window = self.show_large_window("AI正在分析...")
+                
+                # 添加响应内容到大窗口
+                if self.large_window and hasattr(self.large_window, 'append_response_content'):
+                    self.large_window.append_response_content(content)
     
     def on_ai_request_failed(self, error_msg):
         """AI请求失败处理"""
@@ -875,7 +889,7 @@ class MainWindow(QMainWindow):
         elif notification_type == "large_popup":
             # 显示大型弹窗通知
             self.notification_window.show_large_notification(content)
-        elif notification_type == "smtp":
+        elif notification_type == "email":
             # 发送邮件通知
             self.send_email_notification(title, content)
         else:
@@ -915,10 +929,11 @@ class MainWindow(QMainWindow):
     
     def on_email_sent(self):
         """邮件发送成功"""
-        self.notification_window.show_small_notification("邮件通知已发送")
+        # 邮件发送成功时不显示额外弹窗，只记录日志
         logging.info("邮件通知发送成功")
     
     def on_email_failed(self, error_msg: str):
         """邮件发送失败"""
+        # 邮件发送失败时显示小弹窗提示
         self.notification_window.show_small_notification(f"邮件发送失败: {error_msg}")
         logging.error(f"邮件通知发送失败: {error_msg}")
