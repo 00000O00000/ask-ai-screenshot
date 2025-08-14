@@ -337,7 +337,7 @@ class OCRManager(QObject):
                 vision_model.get('api_endpoint', ''),
                 headers=headers,
                 json=request_data,
-                timeout=15
+                timeout=120
             )
             
             if response.status_code != 200:

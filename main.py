@@ -51,16 +51,35 @@ class Application:
             self.config_manager.load_config()
             
             # 检查是否需要启动Flask服务
+            # 同时检测分析AI和OCR AI的API端点是否指向内置AI服务
             ai_config = self.config_manager.get_config("ai_model")
-            if ai_config and ai_config.get("api_endpoint", "").startswith(f"http://127.0.0.1:{self.flask_port}"):
-                # 启动Flask服务线程
+            ocr_config = self.config_manager.get_config("ocr.vision_model")
+            
+            local_endpoint = f"http://127.0.0.1:{self.flask_port}"
+            
+            # 检查分析AI是否指向内置服务
+            ai_uses_local = ai_config and ai_config.get("api_endpoint", "").startswith(local_endpoint)
+            
+            # 检查OCR AI是否指向内置服务
+            ocr_uses_local = ocr_config and ocr_config.get("api_endpoint", "").startswith(local_endpoint)
+            
+            if ai_uses_local or ocr_uses_local:
+                # 至少有一个配置指向内置服务，启动Flask服务
+                services_using_local = []
+                if ai_uses_local:
+                    services_using_local.append("分析AI")
+                if ocr_uses_local:
+                    services_using_local.append("OCR AI")
+                
+                logging.info(f"检测到以下服务使用内置AI: {', '.join(services_using_local)}，启动Flask服务...")
+                
                 self.flask_thread = threading.Thread(target=self.start_flask_server, daemon=True)
                 self.flask_thread.start()
                 
                 # 等待Flask服务启动
                 time.sleep(2)
             else:
-                logging.info("配置未指向本地Flask服务，跳过Flask服务启动")
+                logging.info("分析AI和OCR AI均未指向内置服务，跳过Flask服务启动")
             
             # 初始化各个管理器
             self.screenshot_manager = ScreenshotManager(self.config_manager)

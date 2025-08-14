@@ -1,5 +1,5 @@
 @echo off
-title 通用脚本编译
+title 截图问AI - 项目编译
 call activate py312
 cd ...
 cls

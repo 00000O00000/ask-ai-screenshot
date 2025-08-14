@@ -1,14 +1,10 @@
-# AI截图分析
+# AI截图分析 v2.1
 
 一个方便的AI截图分析工具，快速使用AI解释你在屏幕上看到的东西，或让他帮你解题。
 
-v2.0：移除可能导致问题的前端配置部分，请自行编辑config.toml文件以自定义配置
-
-v2.0：新增：内置原创 Qwen API 逆向，允许开箱即用（使用了一个新账号的token）
-
 exe网盘链接：[https://o-zwz-o.lanzouq.com/b002v8ande](https://o-zwz-o.lanzouq.com/b002v8ande)  密码：52pj
 
-Github 项目地址：[https://github.com/00000O00000/ask-ai-screenshot
+Github 项目地址：[https://github.com/00000O00000/ask-ai-screenshot](https://github.com/00000O00000/ask-ai-screenshot)
 
 软件目前处于测试版，可能存在Bug，若有问题，欢迎前往 Github 提交 issue。
 
@@ -18,11 +14,22 @@ Github 项目地址：[https://github.com/00000O00000/ask-ai-screenshot
 
 - **核心功能**：截图后，将图片OCR为文字或直接提交给AI，并自动显示AI回复结果
 - **可扩展性**：使用提示词自定义功能，例如 一键截图做题、解释、翻译 等功能
+- **开箱即用**：内置原创 Qwen API 逆向，开箱即用
 - **高度自由**：可自行配置使用的AI接口、OCR接口、提示词
+
+## 更新日志
+
+### v2.1
+- Qwen API 上传图片功能，可使用这个AI上传图片进行OCR
+- 替换限制次数的云智OCR引擎为内置 Qwen API，使用“Qwen-2.5vl-32b-instruct”作为OCR引擎。
+  - 老版本用户如果想用这个AI，可以删除配置文件后重启软件，以自动生成新配置。
+### v2.0
+- 移除可能导致问题的前端配置部分，请自行编辑`config.toml`文件以自定义配置
+- 新增：内置原创 Qwen API 逆向，允许开箱即用
 
 ## 注意事项
 
-- 只有多模态模型允许直接提交图片，目前常用的多模态模型为 Claude 3/4 系列，gpt-4o，QvQ-72B。现在常见的Qwen3全系列、Deepseek系列、Kimi-K2都不是多模态模型，需要先OCR后再提交。如果你发现模型报错400，请检查此配置是否正确。
+- 只有多模态模型允许直接提交图片，目前常用的多模态模型为 Claude 3/4 系列，gpt-4o，Qwen-2.5vl。现在常见的Qwen3全系列、Deepseek系列、Kimi-K2都不是多模态模型，需要先OCR后再提交。如果你发现模型报错400，请检查此配置是否正确。
 - 需要联网功能，请使用秘塔API，有赠送额度，且付费很便宜。
 
 ## 技术架构

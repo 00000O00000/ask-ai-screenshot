@@ -286,7 +286,13 @@ class MainWindow(QMainWindow):
         
         # 状态标签
         self.status_label = QLabel("就绪")
-        self.status_label.setStyleSheet("font-weight: bold; color: #666;")
+        self.status_label.setStyleSheet("""
+            font-weight: bold; 
+            color: #666;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            white-space: nowrap;
+        """)
         output_layout.addWidget(self.status_label)
         
         # 输出文本区
@@ -387,12 +393,9 @@ class MainWindow(QMainWindow):
         padding: 8px;
         }
         </style>
-        <h2 style="color: #a8d8a8;">AI截图分析 v2.0</h2>
-        <p>一个方便的AI截图分析工具，快速使用AI解释你在屏幕上看到的东西，或让他帮你解题。</p>
-        <p><strong>移除可能导致问题的前端配置部分，请自行编辑config.toml文件以自定义配置</strong></p>
-        <p><strong>新增：内置原创 Qwen API 逆向，允许开箱即用</strong></p>
+        <h2 style="color: #a8d8a8;">AI截图分析 v2.1</h2>
+        <p>一个方便的AI截图分析工具，快速使用AI识别屏幕上看到的东西，然后让他帮你解释、答题、翻译。</p>
         <p>软件目前处于测试版，可能存在Bug，若有问题，欢迎前往 Github 提交 issue。</p>
-        <p>本软件完全使用 Trae + Claude 4 编写，然后由我和 Claude 4 共同进行用户体验优化。</p>
         <h2>功能特点</h2>
         <ul>
         <li><strong>核心功能</strong>：截图后，将图片OCR为文字或直接提交给AI，并自动显示AI回复结果</li>
@@ -400,9 +403,24 @@ class MainWindow(QMainWindow):
         <li><strong>开箱即用</strong>：内置原创 Qwen API 逆向，开箱即用</li>
         <li><strong>高度自由</strong>：可自行配置使用的AI接口、OCR接口、提示词</li>
         </ul>
+        <h2>更新日志</h2>
+        <h3>v2.1</h3>
+        <ul>
+        <li>Qwen API 上传图片功能，可使用这个AI上传图片进行OCR</li>
+        <li>替换限制次数的云智OCR引擎为内置 Qwen API，使用“Qwen-2.5vl-32b-instruct”作为OCR引擎。
+        <ul>
+        <li>老版本用户如果想用这个AI，可以删除配置文件后重启软件，以自动生成新配置。</li>
+        </ul>
+        </li>
+        </ul>
+        <h3>v2.0</h3>
+        <ul>
+        <li>移除可能导致问题的前端配置部分，请自行编辑<code>config.toml</code>文件以自定义配置</li>
+        <li>新增：内置原创 Qwen API 逆向，允许开箱即用</li>
+        </ul>
         <h2>注意事项</h2>
         <ul>
-        <li>只有多模态模型允许直接提交图片，目前常用的多模态模型有 Claude 3/4 ，gpt-4o，QvQ-72B。而Qwen3全系列、Deepseek系列、Kimi-K2都不是多模态模型，需要先OCR后再提交。若发现模型报错400，请检查此配置是否正确。</li>
+        <li>只有多模态模型允许直接提交图片，目前常用的多模态模型有 Claude 3/4 ，gpt-4o，Qwen-2.5vl。而Qwen3全系列、Deepseek系列、Kimi-K2都不是多模态模型，需要先OCR后再提交。若发现模型报错400，请检查此配置是否正确。</li>
         <li>若需要联网功能，请使用秘塔API，赠送额度不少，且付费很便宜。</li>
         </ul>
         <h2>推荐AI服务商</h2>
@@ -459,15 +477,6 @@ class MainWindow(QMainWindow):
         <p>Github项目地址：https://github.com/00000O00000/ask-ai-screenshot</p>
         <p>软件图标来源：iconfont</p>
         <p>https://www.iconfont.cn/collections/detail?spm=a313x.user_detail.i1.dc64b3430.6b413a81uspeMj&amp;cid=17714</p>
-        <h2>更新日志</h2>
-        <h3>v1.0.0</h3>
-        <ul>
-        <li>初始版本发布</li>
-        <li>支持基本的截图、OCR和AI分析功能</li>
-        <li>完整的配置管理系统</li>
-        <li>多种通知方式</li>
-        <li>现代化的用户界面</li>
-        </ul>
         """)
         
         layout.addWidget(info_text)

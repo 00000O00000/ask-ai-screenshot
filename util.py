@@ -44,7 +44,7 @@ class ConfigManager(QObject):
             # AI模型配置 - 定义使用的AI模型相关参数
             "ai_model": {
                 "name": "内置Qwen3模型",  # 模型显示名称
-                "model_id": "Qwen3-235B-A22B",  # 模型标识符
+                "model_id": "qwen3-235b-a22b",  # 模型标识符
                 "api_endpoint": "http://127.0.0.1:58888/v1/chat/completions",  # API端点地址，支持本地Flask服务
                 "api_key": "sk-example-key",  # API密钥
                 "max_tokens": 0,  # 最大令牌数，0表示使用模型默认值
@@ -89,9 +89,9 @@ class ConfigManager(QObject):
                 # AI视觉模型OCR配置
                 "vision_model": {
                     "name": "OCR专用模型",  # 模型名称
-                    "model_id": "Qwen/QvQ-72B-Preview",  # 模型ID
-                    "api_endpoint": "",  # API端点
-                    "api_key": "",  # API密钥
+                    "model_id": "qwen2.5-vl-32b-instruct",  # 模型ID
+                    "api_endpoint": "http://127.0.0.1:58888/v1/chat/completions",  # API端点
+                    "api_key": "sk-example-key",  # API密钥
                     "max_tokens": 4096,  # 最大令牌数
                     "temperature": 0.1,  # 生成温度，OCR任务使用较低温度
                     "prompt": "请识别图片中的文字内容，并格式化后给我。只返回识别到的文字，不要添加任何解释或说明。"  # OCR专用提示词
@@ -208,113 +208,143 @@ class ConfigManager(QObject):
 # 本文件包含应用程序的所有配置选项，每个选项都有详细说明
 
 # ==================== AI模型配置 ====================
-# 定义使用的AI模型相关参数
 [ai_model]
-# 模型显示名称
+# 定义使用的AI模型相关参数
+
+# ◆ 模型显示名称
 name = "{ai_model_name}"
-# 模型标识符，用于API调用
+
+# ◆ 模型标识符，用于API调用
 model_id = "{ai_model_id}"
-# API端点地址，支持本地Flask服务或远程API
-# 本地服务：http://127.0.0.1:58888/v1/chat/completions
-# 远程服务示例：https://api.openai.com/v1/chat/completions
+
+# ◆ API端点地址，支持本地Flask服务或远程API
+# 内置服务：http://127.0.0.1:58888/v1/chat/completions
+# 第三方服务示例：https://api.openai.com/v1/chat/completions
+# 当您填写了第三方服务时，内置的服务将不会运行
 api_endpoint = "{ai_api_endpoint}"
-# API密钥，用于身份验证
+
+# ◆ API密钥，用于身份验证
+# 使用内置服务时可以随便填
 api_key = "{ai_api_key}"
-# 最大令牌数，0表示使用模型默认值
+
+# ◆ 最大令牌数，0表示使用模型默认值
 max_tokens = {ai_max_tokens}
-# 生成温度，控制回答的随机性(0-2)，值越低越确定
+
+# ◆ 生成温度，控制回答的随机性(0-1)，值越低越确定
 temperature = {ai_temperature}
-# 是否支持图像输入（多模态模型）
+
+# ◆ 模型是否有视觉
+# 不知道就填false
 vision_support = {ai_vision_support}
-# 是否启用流式响应
+
+# ◆ 是否启用流式响应
+# 秘塔AI请填false，响应速度较快的模型也推荐填false。深度思考一定填true。
 enable_streaming = {ai_enable_streaming}
 
 # ==================== 提示词配置 ====================
-# 预定义的AI交互提示词模板，可根据不同场景选择
+# ◆ 预定义的AI交互提示词模板，可根据不同场景，在软件内使用
 {prompts_section}
 
 # ==================== OCR配置 ====================
-# 光学字符识别相关设置
 [ocr]
-# 处理类型：
+# ◆ 图片处理方式：
 # - ocr_then_text: 先OCR提取文字再分析
 # - direct_vision: 直接使用视觉AI分析图片
 type = "{ocr_type}"
-# OCR引擎类型：
+
+# ◆ OCR引擎类型：
 # - xinyew: 新野OCR（免费，推荐）
 # - tencent: 腾讯云OCR（需要配置密钥）
 # - vision_model: AI视觉模型OCR
 engine = "{ocr_engine}"
 
-# 腾讯云OCR配置（仅当engine=tencent时需要）
 [ocr.tencent]
-# 腾讯云SecretId
+# 腾讯云OCR配置（仅当engine=tencent时需要）
+
+# ◆ 腾讯云SecretId
 secret_id = "{tencent_secret_id}"
-# 腾讯云SecretKey
+
+# ◆ 腾讯云SecretKey
 secret_key = "{tencent_secret_key}"
-# 服务区域
+
+# ◆ 服务区域
+# 推荐保持默认
 region = "{tencent_region}"
-# 识别语言：zh(中文)、en(英文)
+
+# ◆ 识别语言：zh(中文)、en(英文)
+# 推荐保持默认
 language = "{tencent_language}"
 
-# AI视觉模型OCR配置（仅当engine=vision_model时需要）
 [ocr.vision_model]
-# 模型名称
+# AI视觉模型OCR配置（仅当engine=vision_model时需要）
+
+# ◆ 模型名称
 name = "{vision_model_name}"
-# 模型ID
+# ◆ 模型ID
 model_id = "{vision_model_id}"
-# API端点
+# ◆ API端点
 api_endpoint = "{vision_api_endpoint}"
-# API密钥
+# ◆ API密钥
 api_key = "{vision_api_key}"
-# 最大令牌数
+# ◆ 最大令牌数
 max_tokens = {vision_max_tokens}
-# 生成温度，OCR任务使用较低温度
+# ◆ 生成温度，OCR任务推荐使用较低温度
 temperature = {vision_temperature}
-# OCR专用提示词
+# ◆ OCR专用提示词
 prompt = "{vision_prompt}"
 
 # ==================== 通知配置 ====================
-# 结果展示方式设置
 [notification]
-# 通知类型：
+# 结果展示方式设置
+
+# ◆ 通知类型：
 # - none: 不额外通知
-# - large_popup: 大弹窗（推荐）
-# - small_popup: 小弹窗
+# - large_popup: 屏幕中心大弹窗
+# - small_popup: 屏幕左下角小弹窗
 # - email: 邮件通知
 type = "{notification_type}"
 
-# SMTP邮件配置（仅当type=email时需要）
 [notification.smtp]
-# SMTP服务器地址
+# SMTP邮件配置（仅当type=email时需要）
+# 小贴士：邮件可以发给自己
+
+# ◆ SMTP服务器地址
 server = "{smtp_server}"
-# SMTP端口
+
+# ◆ SMTP端口
 port = {smtp_port}
-# 邮箱用户名
+
+# ◆ 邮箱用户名
 username = "{smtp_username}"
-# 邮箱密码或授权码
+
+# ◆ 邮箱密码或授权码
 password = "{smtp_password}"
-# 接收邮箱地址
+
+# ◆ 接收邮箱地址
 to_email = "{smtp_to_email}"
 
 # ==================== 快捷键配置 ====================
-# 全局热键设置
 [hotkey]
-# 截图快捷键组合，支持的修饰键：ctrl、alt、shift
+# 全局热键设置
+
+# ◆ 截图快捷键组合
+# 支持的修饰键：ctrl、alt、shift
 # 示例："alt+shift+d"、"ctrl+alt+s"
+# 建议事先验证您的快捷键是否已经被占用
 screenshot = "{hotkey_screenshot}"
 
 # ==================== 截图配置 ====================
-# 截图质量和格式设置
 [screenshot]
-# 截图质量：high(高质量)、medium(中等)、low(低质量)
+# 截图质量和格式设置
+
+# ◆ 截图质量：high(高质量)、medium(中等)、low(低质量)
 quality = "{screenshot_quality}"
-# 截图格式：PNG、JPEG
+# ◆ 截图格式：PNG、JPEG
 format = "{screenshot_format}"
 
 # ==================== 日志配置 ====================
-# 应用程序日志记录设置
 [logging]
+# ◆ 应用程序日志记录设置
 # 日志级别：DEBUG、INFO、WARNING、ERROR、CRITICAL
 # DEBUG: 详细调试信息
 # INFO: 一般信息（推荐）
