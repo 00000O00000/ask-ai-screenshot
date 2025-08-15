@@ -22,6 +22,7 @@ import oss2
 # 负载均衡token池
 # 来扒源码的人就别抄这个Token了，你随便去chat.qwen.ai注册几个新号，都比用下面这些万人token好。
 # 逆向源码摆在这了，就被用这个token了。
+# 后面代码的注释全是AI写的，我也懒得管这个逆向有哪些报错，你看着办吧。
 QWEN_AUTH_TOKENS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjlkYzNkNGI0LWE2ZGYtNGNjMi1iM2U4LWQwM2MzZGRhOWJlYSIsImxhc3RfcGFzc3dvcmRfY2hhbmdlIjoxNzU1MTM1NzQwLCJleHAiOjE3NTc3Mjc3ODV9.BbLfc-uPkiuXg5EtGQ8PBk9OEYAeTGunr043feyPxm4",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjhjMTI2NjU0LTNiN2ItNDhhYi1hMDlkLTdjYWRhYmIzMWNiOCIsImxhc3RfcGFzc3dvcmRfY2hhbmdlIjoxNzU1MTQwOTgyLCJleHAiOjE3NTc3MzMwMTd9.grDFRe5JEg_q2NAy7rFIRQXhph3T8VmUpkgeJMC4nBY",
