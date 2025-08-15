@@ -1,5 +1,8 @@
-# simplified_qwen_proxy_with_image_support.py
+# ai.py
 # pip install requests flask flask-cors oss2
+
+# 使用Qwen3 Coder写的chat.qwen.ai网页API逆向，AI的刀先插在自己身上了说是。
+# 扒源码的哥们，网页端token数上传限制为96000，我没有对大于这个token的请求做错误处理，别被坑了。
 
 import requests
 import uuid
@@ -17,6 +20,8 @@ import oss2
 
 # ==================== 配置区域 ====================
 # 负载均衡token池
+# 来扒源码的人就别抄这个Token了，你随便去chat.qwen.ai注册几个新号，都比用下面这些万人token好。
+# 逆向源码摆在这了，就被用这个token了。
 QWEN_AUTH_TOKENS = [
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjlkYzNkNGI0LWE2ZGYtNGNjMi1iM2U4LWQwM2MzZGRhOWJlYSIsImxhc3RfcGFzc3dvcmRfY2hhbmdlIjoxNzU1MTM1NzQwLCJleHAiOjE3NTc3Mjc3ODV9.BbLfc-uPkiuXg5EtGQ8PBk9OEYAeTGunr043feyPxm4",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjhjMTI2NjU0LTNiN2ItNDhhYi1hMDlkLTdjYWRhYmIzMWNiOCIsImxhc3RfcGFzc3dvcmRfY2hhbmdlIjoxNzU1MTQwOTgyLCJleHAiOjE3NTc3MzMwMTd9.grDFRe5JEg_q2NAy7rFIRQXhph3T8VmUpkgeJMC4nBY",
